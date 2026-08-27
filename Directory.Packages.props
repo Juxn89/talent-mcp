@@ -1,0 +1,74 @@
+<Project>
+  <!--
+    Central Package Management (CPM). This is the file that actually pins versions.
+
+    Do NOT move these back into Directory.Build.props as `PackageReference Update=`:
+    Directory.Build.props is imported *before* the project body, so the project's own
+    `PackageReference Include=` items do not exist yet and there is nothing to update —
+    restore fails with NU1015 ("do not have a version specified"). Verified 27 Aug 2026.
+
+    Individual .csproj files reference packages WITHOUT a Version attribute.
+    All versions below verified against api.nuget.org on 27 Aug 2026.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!--
+    MCP SDK 2.2.0 (Apache-2.0) — implements protocol revision 2026-07-28.
+    Package ids matter: there is no `ModelContextProtocol.Server` nor
+    `ModelContextProtocol.Server.AspNetCore` on NuGet. The real surface is
+    `.Core` (low-level client/server), `ModelContextProtocol` (stdio + hosting/DI +
+    attribute discovery), `.AspNetCore` (Streamable HTTP) and `.Extensions.*`.
+  -->
+  <ItemGroup Label="MCP SDK">
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.Extensions.Tasks" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Persistence — EF Core 10 tracks .NET 10">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Auth — OAuth 2.1 resource server">
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+  </ItemGroup>
+
+  <!--
+    OTLP only. `OpenTelemetry.Exporter.Jaeger` is abandoned (last release 1.5.1) and the
+    Jaeger native protocol is deprecated upstream — Jaeger ingests OTLP directly, so traces
+    go through the OTel Collector. Do not reintroduce the Jaeger exporter.
+  -->
+  <ItemGroup Label="Observability">
+    <PackageVersion Include="OpenTelemetry" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+  </ItemGroup>
+
+  <!--
+    ArchUnitNET's real latest is 0.13.4 (it never reached 4.x). Its xUnit adapter depends on
+    xunit.assert 2.4.1, i.e. the xUnit v2 line — so the test stack stays on xUnit 2.9.3.
+    Moving to xunit.v3 (4.0.0) would break the ArchUnitNET assertion adapter.
+    `xunit.runner.visualstudio` 3.1.5 is the last v2-compatible runner (4.0.0 is v3-only).
+  -->
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="TngTech.ArchUnitNET" Version="0.13.4" />
+    <PackageVersion Include="TngTech.ArchUnitNET.xUnit" Version="0.13.4" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="Testcontainers" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.Keycloak" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Benchmarking">
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+</Project>

@@ -27,7 +27,7 @@ cd talent-mcp
 dotnet restore
 
 # Start infrastructure
-docker compose up -d
+docker compose -f deploy/compose.yaml up -d
 
 # Run tests
 dotnet test
@@ -38,14 +38,14 @@ dotnet build
 
 ### Infrastructure
 
-The `docker-compose.yaml` stack includes:
-- **PostgreSQL** — domain data (jobs, candidates, skills)
+The `deploy/compose.yaml` stack includes:
+- **PostgreSQL** — domain data (jobs, candidates, skills), seeded
 - **Keycloak** — OAuth 2.1 / OIDC identity provider
-- **API** — Talent.Mcp.Server (Streamable HTTP)
+- **API** — Talent.Mcp.Server (stateless Streamable HTTP)
 - **Observability** — OTel Collector, Jaeger, Prometheus, Grafana
 
 ```bash
-docker compose up -d
+docker compose -f deploy/compose.yaml up -d
 # Keycloak: http://localhost:8080 (admin/admin)
 # Grafana:  http://localhost:3000
 # Jaeger:   http://localhost:16686
@@ -58,10 +58,11 @@ docker compose up -d
 **Clean Architecture** with strict dependency rule:
 
 ```
-Domain → Application → Infrastructure → Presentation
-   ↑         ↑              ↑
-   └─────────┴──────────────┘
-     (only inward references)
+Presentation ──┐
+               ├──▶ Application ──▶ Domain
+Infrastructure ┘
+
+Dependencies point inward only. Domain references nothing.
 ```
 
 - **`Talent.Domain`** — Pure business rules, entities, enums. Zero framework dependencies.
@@ -77,14 +78,18 @@ Verified by `ArchUnitNET` on every build.
 
 ## Tools (MCP Services)
 
-| Tool | Input | Output | Purpose |
-|---|---|---|---|
-| `search_jobs` | Query, filters (location, salary, skills) | Job IDs with relevance | Find matching job postings |
-| `score_candidate_fit` | Candidate ID, Job ID | Score (0–100) + reason | Deterministic candidate-to-job matching |
-| `extract_skills` | Text (CV, job description) | Normalized skills + confidence | Skill extraction with categorization |
-| `list_skill_categories` | (none) | Taxonomy of skill categories | Reference data for UI |
+| Tool | Input | Output | Required scope | Protocol capability exercised |
+|---|---|---|---|---|
+| `search_jobs` | Query, filters (location, salary, skills), page handle | Jobs + next signed handle | `talent.jobs.read` | Handle-based pagination (sessions are gone) |
+| `get_job` | Job ID, `Region` header | Job + `ttlMs`/`cacheScope` | `talent.jobs.read` | Cacheable result + `[McpHeader]` promotion |
+| `extract_skills` | Text (CV, job description) | Normalized skills + confidence | `talent.jobs.read` | Deterministic taxonomy normalization, no LLM |
+| `score_candidate_fit` | Candidate ID, Job ID | Score (0–100) + per-component breakdown | `talent.candidates.read` | Explainable deterministic scoring |
+| `reject_candidate` | Candidate ID, reason | Confirmation | `talent.candidates.reject` | MRTR — destructive op requiring `inputResponses` |
+| `bulk_score_shortlist` | Shortlist ID | Task handle | `talent.candidates.write` | Tasks extension with Postgres store |
 
-All tools require OAuth 2.1 authorization (Bearer token).
+All tools require OAuth 2.1 authorization (Bearer token) and enforce their **own** scope — read,
+write and destructive are not interchangeable. No tool calls an LLM: the server runs with no API
+keys and at zero cost.
 
 ---
 
@@ -99,7 +104,7 @@ dotnet test tests/Talent.Architecture.Tests
 # 2. Domain (pure, no Docker)
 dotnet test tests/Talent.Domain.Tests
 
-# 3. Application (mocks)
+# 3. Tools over the in-memory transport
 dotnet test tests/Talent.Mcp.Tests
 
 # 4. Protocol Conformance (Testcontainers)
@@ -138,9 +143,12 @@ docker push ghcr.io/juxn89/talent-mcp:latest
 
 ### As a dotnet tool
 
+`Talent.Mcp.Toolkit` is a **library**, not a tool. The installable tool is `Talent.Mcp.Server`,
+which exposes the `talent-mcp` command (stdio transport, for Claude Code / Claude Desktop):
+
 ```bash
-dotnet tool install --global Talent.Mcp.Toolkit
-talent-mcp --port 8000
+dotnet tool install --global Talent.Mcp.Server
+talent-mcp
 ```
 
 ---
@@ -152,7 +160,7 @@ Environment variables (or `appsettings.json`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `ASPNETCORE_URLS` | `http://localhost:5000` | API listen address |
-| `DATABASE_CONNECTION_STRING` | `postgres://localhost/talent` | PostgreSQL connection |
+| `DATABASE_CONNECTION_STRING` | `Host=localhost;Database=talent;Username=talent;Password=talent` | PostgreSQL connection (Npgsql keyword format, not a URI) |
 | `KEYCLOAK_URL` | `http://localhost:8080` | Keycloak issuer |
 | `KEYCLOAK_CLIENT_ID` | `talent-mcp-server` | OAuth client |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTel Collector |
@@ -163,7 +171,7 @@ See `src/Talent.Mcp.Server/appsettings.json` for full defaults.
 
 ## Documentation
 
-- **[Plan](https://github.com/Juxn89/juangomezb/blob/feat/projects/docs/plans/a2-talent-mcp.md)** — Full architectural plan
+- **[Plan](./docs/plans/a2-talent-mcp.md)** — Full architectural plan (source of truth for scope and phases)
 - **[AGENTS.md](./AGENTS.md)** — AI agent guidelines for this repo
 - **ADRs** — Architecture decisions in `/docs/adr/`
 
@@ -179,7 +187,7 @@ Apache License 2.0 — See [LICENSE](./LICENSE)
 
 1. **Setup:**
    ```bash
-   docker compose up -d
+   docker compose -f deploy/compose.yaml up -d
    dotnet restore
    dotnet build
    ```
@@ -188,4 +196,4 @@ Apache License 2.0 — See [LICENSE](./LICENSE)
 
 3. **Iterate:** Each phase is mergeable and testable independently.
 
-See [plan](https://github.com/Juxn89/juangomezb/blob/feat/projects/docs/plans/a2-talent-mcp.md#fases) for details.
+See the [plan](./docs/plans/a2-talent-mcp.md#fases) for details.

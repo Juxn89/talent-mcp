@@ -69,6 +69,12 @@ servidor MCP):
 
 ### Superficie de API confirmada
 
+> **Nota (27 ago 2026, F0):** los dos fragmentos de abajo son los de la documentación del SDK y **no
+> son la forma que usa este repo**. El spike de AOT ([`ADR-0002`](../adr/0002-native-aot-and-explicit-tool-registration.md))
+> midió que el trimming vacía silenciosamente las tools descubiertas por reflexión: `tools/list`
+> responde `-32601` sin crash ni log de error. Se registra con `WithTools<T>()` explícito, y las
+> clases de tool **no pueden ser `static`** (`WithTools<T>` las rechaza con `CS0718`).
+
 ```csharp
 using ModelContextProtocol.Server;
 using System.ComponentModel;
@@ -323,8 +329,8 @@ Cinco niveles, cada uno con un trabajo distinto. Los cinco corren en CI y bloque
 
 | Riesgo | Mitigación |
 |---|---|
-| Native AOT vs descubrimiento por reflexión | F0 lo decide antes de construir sobre esa base; fallback a registro explícito y luego a JIT, con ADR |
-| El plan se apoya en notas de 2.0.0, no de 2.2.0 | Primera tarea de F0: leer el changelog 2.0.0→2.2.0 |
+| ~~Native AOT vs descubrimiento por reflexión~~ | **Resuelto (27 ago 2026).** El trimming sí lo rompe, y en silencio. Se corta en el paso 2 de la cascada: registro explícito con `WithTools<T>()`, AOT sigue viable, JIT no hace falta. [`ADR-0002`](../adr/0002-native-aot-and-explicit-tool-registration.md) |
+| ~~El plan se apoya en notas de 2.0.0, no de 2.2.0~~ | **Resuelto (27 ago 2026).** Sin cambios rompientes; cinco hallazgos y una decisión nueva. [`Revisión del changelog`](../verification/sdk-2.0.0-to-2.2.0-review.md) · [`ADR-0001`](../adr/0001-streamable-http-session-mode.md) |
 | Keycloak sin `S256` en su metadata | Realm versionado y un test de conformidad que lo asserta |
 | La spec se sigue moviendo rápido | Fijar la revisión en el README y en un test; la política de deprecación da 12 meses de ventana |
 | Alcance real de ~4 semanas | Orden de corte explícito: AOT → librería → Keycloak a API key |

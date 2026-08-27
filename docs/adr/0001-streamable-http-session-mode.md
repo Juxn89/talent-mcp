@@ -63,7 +63,7 @@ builder.Services.AddMcpServer()
     {
         options.SessionMode = HttpServerSessionMode.Stateless;
     })
-    .WithToolsFromAssembly();
+    .WithTools<SearchJobsTool>();   // explicit registration — see ADR-0002
 ```
 
 Explicit rather than defaulted for two reasons: the intent is the single most load-bearing fact

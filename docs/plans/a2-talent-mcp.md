@@ -25,6 +25,14 @@ versionados y CI en verde.
 
 ## Terreno verificado (25 ago 2026)
 
+> **Nota (27 ago 2026, F0):** esta sección se escribió contra las notas de release de **2.0.0**. La
+> tarea de F0 "verificar el changelog 2.0.0 → 2.2.0" ya se ejecutó y corrigió dos afirmaciones de
+> aquí — ver [`docs/verification/sdk-2.0.0-to-2.2.0-review.md`](../verification/sdk-2.0.0-to-2.2.0-review.md)
+> y [`ADR-0001`](../adr/0001-streamable-http-session-mode.md). En concreto: `Stateless` **no** es
+> obsoleto y ponerlo en `false` no emite `MCP9006` (ese diagnóstico lo llevan cinco propiedades de
+> sesión), y SDK 2.2.0 introdujo `HttpServerSessionMode`, que sustituye al booleano. El resto del
+> plan sigue en pie: no hubo cambios rompientes en 2.1.0 ni 2.2.0.
+
 Esto se comprobó contra las fuentes antes de escribir el plan, porque el protocolo se movió mucho:
 
 | Qué | Estado |

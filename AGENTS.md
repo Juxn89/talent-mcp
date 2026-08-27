@@ -41,18 +41,54 @@ The 2026-07-28 revision removed or deprecated the following. Using any of them i
 style preference. Several emit SDK analyzer diagnostics which, with `TreatWarningsAsErrors=true`,
 fail the build:
 
+Diagnostic ids and messages below were read from `src/Common/Obsoletions.cs` at tag `v2.2.0` on
+27 Aug 2026 — see [the changelog review](./docs/verification/sdk-2.0.0-to-2.2.0-review.md).
+
 | Do not use | Use instead | Note |
 |---|---|---|
-| `Mcp-Session-Id` header, `initialize` handshake | **Server-minted signed handles** passed as ordinary tool arguments | Sessions are gone. `HttpServerTransportOptions.Stateless` is `true` by default; setting it `false` emits `MCP9006` |
-| Server-initiated requests | **MRTR** — throw `InputRequiredException`, client retries with `inputResponses` | |
-| **Roots** | — | Deprecated (`MCP9005`) |
-| **Sampling** | — | Deprecated (`MCP9005`) |
-| **MCP Logging API** | `stderr` in stdio hosts, **OpenTelemetry** in HTTP hosts | Deprecated (`MCP9005`). Per-request level arrives in `_meta` |
-| **HTTP+SSE transport** | Streamable HTTP | |
+| `Mcp-Session-Id` header, `initialize` handshake | **Server-minted signed handles** passed as ordinary tool arguments | Sessions are gone (SEP-2567, SEP-2575) |
+| The session-only HTTP options: `EventStreamStore`, `SessionMigrationHandler`, `PerSessionExecutionContext`, `IdleTimeout`, `MaxIdleSessionCount` | Nothing — this server has no sessions | These five carry `MCP9006`. **Note:** the `Stateless` boolean is *not* obsolete and assigning `false` emits nothing; see the session-mode rule below |
+| Server-initiated requests | **MRTR** — throw `InputRequiredException`, client retries with `inputResponses` | Under stateless HTTP there is no server→client request channel at all |
+| **Roots** | — | Deprecated (`MCP9005`, SEP-2577) |
+| **Sampling** | — | Deprecated (`MCP9005`, SEP-2577) |
+| **MCP Logging API** | `stderr` in stdio hosts, **OpenTelemetry** in HTTP hosts | Deprecated (`MCP9005`, SEP-2577). Per-request level arrives in `_meta` |
+| **HTTP+SSE transport** / `EnableLegacySse` | Streamable HTTP | `MCP9004` — legacy SSE has no built-in request backpressure |
+| `EnumSchema`, `LegacyTitledEnumSchema` | The current schema generation path | `MCP9001` (SEP-1330). **Easy to hit here:** `SkillCategory` and the skill taxonomy mean tool input schemas carry enum-typed parameters |
+| `RequestContextParams` parameterless ctor | The overload taking a parameters argument | `MCP9003` |
 | **Dynamic Client Registration (DCR)** | **Client ID Metadata Documents** | ADR required in F3 |
-| Old client OAuth callback delegate | `ClientOAuthOptions.AuthorizationCallbackHandler` | The old delegate emits `MCP9007` |
+| Old client OAuth callback delegate | `ClientOAuthOptions.AuthorizationCallbackHandler` | `MCP9007` — the old delegate cannot supply the RFC 9207 issuer |
 | `OpenTelemetry.Exporter.Jaeger` | `OpenTelemetry.Exporter.OpenTelemetryProtocol` | Abandoned package (last release 1.5.1); Jaeger ingests OTLP directly |
 | `InMemoryMcpTaskStore` in production paths | `PostgresMcpTaskStore` from `Talent.Mcp.Toolkit` | In-memory is fine in unit tests only; a restart must not lose in-flight tasks |
+
+`MCP9002` does not exist in 2.2.0. All of the above fail the build, not warn, because of
+`TreatWarningsAsErrors=true` — do not suppress them.
+
+### Session mode — set it explicitly
+
+Per [ADR-0001](./docs/adr/0001-streamable-http-session-mode.md). SDK 2.2.0 replaced the boolean with
+a three-valued enum; `Stateless` is the default but is set explicitly anyway, so the single most
+load-bearing fact about this server is readable at the call site:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
+    .WithToolsFromAssembly();
+```
+
+Do not use the `Stateless` boolean proxy, and do not select `Stateful` (it refuses 2026-07-28
+requests with `-32022`) or `StatefulForInitializeClients` (a hybrid, deliberately declined — the ADR
+records why and when to revisit).
+
+### Not used, deliberately
+
+- **`subscriptions/listen`** (SEP-2575, new in SDK 2.1.0: `McpServerHandlers.SubscriptionsListenHandler`, `WithSubscriptionsListenHandler(...)`). None of the six tools is a subscription; adding one expands the conformance surface for no extra demonstration. This is an omission by choice, not an oversight.
+
+### 2.2.0 is a floor, not a preference
+
+Do not downgrade the SDK pin to a 2.0.x or 2.1.x line. Two fixes in that window land on paths this
+project uses: `McpHeaderEncoder.DecodeValue` threw on a degenerate base64 wrapper before 2.2.0 (and
+`get_job` uses `[McpHeader("Region")]`), and HTTP status codes were not preserved across target
+frameworks before 2.1.0 (and the E2E suite asserts `401` and scope denial).
 
 Also breaking in this revision, and easy to get wrong:
 
@@ -103,6 +139,8 @@ Also breaking in this revision, and easy to get wrong:
 /docs
   plans/a2-talent-mcp.md       The plan — source of truth
   adr/                         Architecture Decision Records with trade-offs
+  verification/                Dated verification records (Principle #6): what was checked, against
+                               what source, on what date. Grep here before re-verifying something.
 ```
 
 **The domain defends itself:** scoring and skill normalization are pure functions over
@@ -302,11 +340,11 @@ gate, they do not merely report.
    - Use cases against fake ports: happy path + degradation (repo down → fallback)
 
 4. **Protocol conformance** (`Talent.Mcp.Conformance` — Testcontainers) — the suite with the most signal
-   - `server/discover` returns versions, capabilities and identity
+   - `server/discover` returns versions, capabilities and identity. Assert the **response shape**, not that a client fails without it: as of SDK 2.1.0 a client treats HTTP 404 from the probe as a down-level server and falls back to `initialize`
    - Full MRTR cycle: first `input_required` → retry with `inputResponses`
    - `ttlMs`/`cacheScope` present on every list response
    - Tool order stable across calls
-   - Downgrade negotiation against a 2025-11-25 client
+   - A 2025-11-25 client is **served statelessly** — no `Mcp-Session-Id` minted or echoed, GET/DELETE return `405`. The plan called this "downgrade negotiation"; under `SessionMode.Stateless` there is no downgrade, and asserting `-32022` would assert `Stateful` behaviour this server deliberately does not have ([ADR-0001](./docs/adr/0001-streamable-http-session-mode.md))
    - Keycloak's metadata declares `S256`
 
 5. **E2E** (`Talent.Mcp.E2E` — real compose, **no mocks**)
@@ -321,9 +359,13 @@ All five runnable locally with no cluster and no remote service.
 ## 🚀 Verification Gates (Principle #6)
 
 **Before deciding on a version, package id, API or capability:**
-- Cross-check against the official source (NuGet registration API, GitHub releases, the protocol spec)
-- Record the date verified next to the claim
-- Example: package ids and versions in the stack table verified against `api.nuget.org` on 27 Aug 2026 — which is how `ModelContextProtocol.Server` (nonexistent) and `ArchUnitNET 4.11` (nonexistent) were caught
+- Cross-check against the official source (NuGet registration API, GitHub releases, and for API
+  claims **the source at the pinned tag** — release-note prose is not enough)
+- Record the date verified next to the claim, and the record itself in `docs/verification/`
+- What this has already caught: `ModelContextProtocol.Server` and `ArchUnitNET 4.11` do not exist;
+  `PackageReference Update=` in `Directory.Build.props` is inert (`NU1015`); `Stateless = false`
+  does **not** emit `MCP9006`; `MCP9001` applies to enum schemas, which this domain will reach for.
+  All three of those came from the plan or from an earlier revision of this file.
 
 **Before shipping code:**
 - `dotnet build` — no warnings (warnings are errors) ✅
@@ -442,10 +484,17 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 
 ## 📚 References
 
+**In this repo:**
+- [The plan](./docs/plans/a2-talent-mcp.md) — source of truth for scope and phases
+- [ADR-0001 · Streamable HTTP session mode](./docs/adr/0001-streamable-http-session-mode.md)
+- [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
+
+**External:**
 - [The 2026-07-28 Specification](https://blog.modelcontextprotocol.io/posts/2026-07-28/)
 - [Key Changes — 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
 - [modelcontextprotocol/csharp-sdk](https://github.com/modelcontextprotocol/csharp-sdk)
 - [NuGet: ModelContextProtocol 2.2.0](https://www.nuget.org/packages/ModelContextProtocol)
+- [SDK docs: Multi Round-Trip Requests (MRTR)](https://csharp.sdk.modelcontextprotocol.io/v2/concepts/mrtr/mrtr.html)
 - [Announcing v2.0 of the official MCP C# SDK — .NET Blog](https://devblogs.microsoft.com/dotnet/announcing-v20-of-the-official-mcp-csharp-sdk/)
 - [OAuth 2.1 PKCE (RFC 7636)](https://www.rfc-editor.org/rfc/rfc7636) · [RFC 9207 `iss`](https://www.rfc-editor.org/rfc/rfc9207)
 - [OpenTelemetry .NET](https://opentelemetry.io/docs/languages/net/)

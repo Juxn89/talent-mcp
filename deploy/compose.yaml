@@ -1,0 +1,111 @@
+# Talent.Mcp — local stack.
+#
+# F0 scope: Postgres and Keycloak starting, nothing else. The MCP server service is added in F2
+# (it has no project yet) and the observability stack — OTel Collector, Jaeger, Prometheus,
+# Grafana — in F4. Placeholders are at the bottom so the growth points are visible.
+#
+#   docker compose -f deploy/compose.yaml up -d
+#   docker compose -f deploy/compose.yaml down -v     # -v also drops the Postgres volume
+#
+# Image tags verified against quay.io and Docker Hub on 27 Aug 2026. Pinned to exact patch
+# versions on purpose: "latest" makes a green CI run unreproducible three weeks later.
+#
+# Credentials below are DEV-ONLY defaults so `up -d` works with zero setup. Every one is
+# overridable from the environment, and production supplies real secrets that way.
+
+name: talent-mcp
+
+services:
+  postgres:
+    # A1 later swaps this for pgvector/pgvector:pg18 on the same schema and volume — that is the
+    # whole point of A2 owning the domain. Keep the major version aligned when that happens.
+    image: postgres:18.6-alpine
+    container_name: talent-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-talent}
+      POSTGRES_USER: ${POSTGRES_USER:-talent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-talent}
+      # Consumed by ./postgres/init/01-keycloak-database.sh, not by the postgres image itself.
+      KEYCLOAK_DB: ${KEYCLOAK_DB:-keycloak}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # NOT /var/lib/postgresql/data. The postgres 18+ images store data in a
+      # major-version-specific subdirectory and refuse to start if the old path is mounted
+      # ("there appears to be PostgreSQL data in: /var/lib/postgresql/data (unused mount/volume)").
+      # Mounting the parent is what allows `pg_upgrade --link` later without mount-boundary issues.
+      # Verified by hitting it on 27 Aug 2026: see docker-library/postgres#1259.
+      - postgres-data:/var/lib/postgresql
+      # Runs only on first initialisation of an empty data directory.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -U/-d are required: without them pg_isready checks the root role and reports a false green.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-talent} -d ${POSTGRES_DB:-talent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.2
+    container_name: talent-keycloak
+    # start-dev: HTTP without TLS and a relaxed hostname check, which is correct for local work and
+    # for Testcontainers. Production uses `start` with KC_HOSTNAME and TLS — see F3.
+    # --import-realm only imports when the realm is absent, so a restart does not clobber changes
+    # made through the admin console. To force a re-import: `down -v`, which drops the volume.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # Keycloak 26 renamed these; KEYCLOAK_ADMIN/KEYCLOAK_ADMIN_PASSWORD are deprecated.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Backed by the same Postgres instance, separate database. Dev-mode H2 would lose the realm
+      # on every recreate, and "why did my client disappear" is a bad first experience.
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-talent}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-talent}
+      # Exposes /health/* on the management port (9000), which the healthcheck below uses.
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+      - "${KEYCLOAK_MANAGEMENT_PORT:-9000}:9000"
+    volumes:
+      # Mounted as a file, not a directory: the path matches the one the plan and AGENTS.md name.
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # The Keycloak image has no curl or wget (UBI micro base), so this compiles a throwaway
+      # single-file Java program against the bundled JDK. This is the workaround Keycloak's own
+      # docs recommend; do not "simplify" it to `curl`, it will not exist.
+      test:
+        - CMD-SHELL
+        - >-
+          [ -f /tmp/HealthCheck.java ] || echo "public class HealthCheck { public static void
+          main(String[] args) throws java.lang.Throwable { java.net.URI uri =
+          java.net.URI.create(args[0]); System.exit(java.net.HttpURLConnection.HTTP_OK ==
+          ((java.net.HttpURLConnection) uri.toURL().openConnection()).getResponseCode() ? 0 : 1); }
+          }" > /tmp/HealthCheck.java && java /tmp/HealthCheck.java
+          http://localhost:9000/health/ready
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Added in F2 -------------------------------------------------------------------------
+  # talent-mcp-server:
+  #   build: { context: .., dockerfile: deploy/Dockerfile }
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     keycloak: { condition: service_healthy }
+  #
+  # --- Added in F4 -------------------------------------------------------------------------
+  # otel-collector / jaeger / prometheus / grafana
+  # Config already has its homes: ./otel/collector.yaml, ./grafana/dashboards/
+
+volumes:
+  postgres-data:
+    name: talent-mcp-postgres-data

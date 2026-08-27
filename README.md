@@ -38,18 +38,29 @@ dotnet build
 
 ### Infrastructure
 
-The `deploy/compose.yaml` stack includes:
-- **PostgreSQL** — domain data (jobs, candidates, skills), seeded
-- **Keycloak** — OAuth 2.1 / OIDC identity provider
-- **API** — Talent.Mcp.Server (stateless Streamable HTTP)
-- **Observability** — OTel Collector, Jaeger, Prometheus, Grafana
+The `deploy/compose.yaml` stack, and where each piece lands:
+
+| Service | Status | Purpose |
+|---|---|---|
+| **PostgreSQL** 18.6 | ✅ live | Domain data (jobs, candidates, skills) + Keycloak's own database |
+| **Keycloak** 26.7.2 | ✅ live | OAuth 2.1 / OIDC provider, realm imported from `deploy/keycloak/realm.json` |
+| **Talent.Mcp.Server** | F2 | Stateless Streamable HTTP host |
+| **Observability** | F4 | OTel Collector, Jaeger, Prometheus, Grafana |
 
 ```bash
 docker compose -f deploy/compose.yaml up -d
-# Keycloak: http://localhost:8080 (admin/admin)
-# Grafana:  http://localhost:3000
-# Jaeger:   http://localhost:16686
+# Keycloak admin:  http://localhost:8080          (admin / admin)
+# Realm discovery: http://localhost:8080/realms/talent/.well-known/openid-configuration
+# Keycloak health: http://localhost:9000/health/ready
+# Postgres:        localhost:5432                 (talent / talent, databases: talent, keycloak)
+# Seed user:       recruiter / recruiter
 ```
+
+All credentials are dev-only defaults and every one is overridable from the environment. Image tags
+are pinned to exact patch versions so a green CI run stays reproducible.
+
+Tear down with `docker compose -f deploy/compose.yaml down`; add `-v` to drop the Postgres volume,
+which is also how you force a realm re-import.
 
 ---
 

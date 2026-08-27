@@ -375,7 +375,7 @@ gate, they do not merely report.
    - `ttlMs`/`cacheScope` present on every list response
    - Tool order stable across calls
    - A 2025-11-25 client is **served statelessly** — no `Mcp-Session-Id` minted or echoed, GET/DELETE return `405`. The plan called this "downgrade negotiation"; under `SessionMode.Stateless` there is no downgrade, and asserting `-32022` would assert `Stateful` behaviour this server deliberately does not have ([ADR-0001](./docs/adr/0001-streamable-http-session-mode.md))
-   - Keycloak's metadata declares `S256`
+   - Keycloak's metadata **contains** `S256` in `code_challenge_methods_supported`, and separately that `talent-mcp-client` rejects a `plain` challenge. Do not assert the list equals `["S256"]`: Keycloak advertises `["plain","S256"]` realm-wide and does not allow removing `plain`, so enforcement is per-client. See [`deploy/keycloak/README.md`](./deploy/keycloak/README.md)
 
 5. **E2E** (`Talent.Mcp.E2E` — real compose, **no mocks**)
    - A real MCP client against Postgres + Keycloak + server, through OAuth

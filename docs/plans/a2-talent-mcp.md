@@ -331,7 +331,7 @@ Cinco niveles, cada uno con un trabajo distinto. Los cinco corren en CI y bloque
 |---|---|
 | ~~Native AOT vs descubrimiento por reflexión~~ | **Resuelto (27 ago 2026).** El trimming sí lo rompe, y en silencio. Se corta en el paso 2 de la cascada: registro explícito con `WithTools<T>()`, AOT sigue viable, JIT no hace falta. [`ADR-0002`](../adr/0002-native-aot-and-explicit-tool-registration.md) |
 | ~~El plan se apoya en notas de 2.0.0, no de 2.2.0~~ | **Resuelto (27 ago 2026).** Sin cambios rompientes; cinco hallazgos y una decisión nueva. [`Revisión del changelog`](../verification/sdk-2.0.0-to-2.2.0-review.md) · [`ADR-0001`](../adr/0001-streamable-http-session-mode.md) |
-| Keycloak sin `S256` en su metadata | Realm versionado y un test de conformidad que lo asserta |
+| ~~Keycloak sin `S256` en su metadata~~ | **Resuelto (27 ago 2026).** Realm versionado en `deploy/keycloak/realm.json` y verificado contra el stack corriendo: `code_challenge_methods_supported` es `["plain","S256"]`. Ojo — `plain` no se puede quitar del metadata del realm, la imposición es por cliente; el test asserta *presencia* de S256, no igualdad. [`deploy/keycloak/README.md`](../../deploy/keycloak/README.md) |
 | La spec se sigue moviendo rápido | Fijar la revisión en el README y en un test; la política de deprecación da 12 meses de ventana |
 | Alcance real de ~4 semanas | Orden de corte explícito: AOT → librería → Keycloak a API key |
 

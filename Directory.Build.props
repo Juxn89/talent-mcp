@@ -1,0 +1,55 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Version -->
+    <Version>1.0.0</Version>
+    <Authors>Juan Gómez</Authors>
+    <PackageProjectUrl>https://github.com/Juxn89/talent-mcp</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Juxn89/talent-mcp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Build -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Deterministic builds -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- Package Versions (Central) -->
+  <ItemGroup>
+    <PackageReference Update="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Update="ModelContextProtocol.Server" Version="2.2.0" />
+    <PackageReference Update="ModelContextProtocol.Server.AspNetCore" Version="2.2.0" />
+
+    <PackageReference Update="Microsoft.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Update="Microsoft.EntityFrameworkCore.Design" Version="9.0.0" />
+    <PackageReference Update="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.0" />
+
+    <PackageReference Update="OpenTelemetry" Version="1.9.0" />
+    <PackageReference Update="OpenTelemetry.Exporter.Jaeger" Version="1.9.0" />
+    <PackageReference Update="OpenTelemetry.Exporter.Console" Version="1.9.0" />
+
+    <PackageReference Update="TngTech.ArchUnitNET.xUnit" Version="4.11.0" />
+    <PackageReference Update="xunit" Version="2.8.0" />
+    <PackageReference Update="xunit.runner.visualstudio" Version="2.8.0" />
+    <PackageReference Update="Microsoft.NET.Test.Sdk" Version="17.11.0" />
+
+    <PackageReference Update="Testcontainers" Version="3.8.0" />
+    <PackageReference Update="Testcontainers.PostgreSql" Version="3.8.0" />
+  </ItemGroup>
+
+  <!-- Code Analysis Rules -->
+  <ItemGroup Condition="'$(IsTestProject)' == ''">
+    <CompilerVisibleProperty Include="CI" />
+  </ItemGroup>
+</Project>

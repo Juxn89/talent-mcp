@@ -83,8 +83,12 @@ records why and when to revisit).
 
 ### Tool registration — explicit, non-static, with pinned names
 
-Per [ADR-0002](./docs/adr/0002-native-aot-and-explicit-tool-registration.md), which resolved the
-plan's Native AOT risk by measurement. Three rules, all load-bearing:
+Per [ADR-0002](./docs/adr/0002-native-aot-and-explicit-tool-registration.md), which settled the
+reflection-vs-trimming question by measurement. These three rules are permanent and hold whether or
+not Native AOT ever ships — the ADR's scope limit explains why AOT itself is still open (EF Core is
+not AOT-compatible, so the real gate is the data-access dependency, decided in F1/F2).
+
+Three rules, all load-bearing:
 
 1. **Register with `WithTools<T>()`, one call per tool type.** Never `WithToolsFromAssembly()`.
    Registration order is also how deterministic tool ordering is achieved.

@@ -1,11 +1,12 @@
-# ADR-0002 · Native AOT stays viable — register tools explicitly, never by assembly scan
+# ADR-0002 · Register tools explicitly, never by assembly scan
 
 | | |
 |---|---|
 | **Status** | Accepted |
-| **Date** | 27 Aug 2026 |
+| **Date** | 27 Aug 2026 · scope limit added same day |
 | **Phase** | F0 (risk spike) |
-| **Resolves** | Risk #1 in the plan — "Native AOT vs reflection-based discovery" |
+| **Resolves** | Risk #1 in the plan, *as written*: "Native AOT vs reflection-based discovery" |
+| **Does NOT resolve** | Whether Native AOT is achievable for the real host. See [Scope limit](#scope-limit-of-this-experiment) — EF Core is the next gate |
 
 ## Context
 
@@ -58,8 +59,12 @@ shipped.
 **Register every tool explicitly with the generic `WithTools<T>()`. Never use
 `WithToolsFromAssembly()`, in any host, including tests.**
 
-The plan's fallback cascade resolves at step 2. Native AOT stays on the table, JIT is not needed,
-and no ADR-documented defeat is required — the cost is one line per tool type.
+The plan's fallback cascade resolves at step 2: explicit registration, not JIT. This removes
+reflection-based discovery as an obstacle to AOT at a cost of one line per tool type — and it is
+worth doing on its own merits (deterministic ordering, a trim-clean build) regardless of whether
+AOT ever ships.
+
+It does **not** establish that Native AOT is achievable. See the scope limit below.
 
 A consequence that constrains F2's code: **`WithTools<T>()` rejects static classes** with
 `CS0718: static types cannot be used as type arguments`. The plan's `public static class EchoTool`
@@ -101,6 +106,35 @@ and a refactor cannot move it.
 signature alone. The revision's "`inputSchema` is mandatory" requirement is satisfied by using the
 attributes correctly; the conformance test asserts its presence, it does not author it.
 
+## Scope limit of this experiment
+
+**The spike measured a minimal dependency graph, not the real one.** All three configurations were
+the MCP SDK plus the generic host and nothing else — no EF Core, no Npgsql, no OpenTelemetry, no
+OAuth. That was the right shape for isolating the question the plan asked, and it is the wrong shape
+for concluding anything about the shipped host.
+
+**The likely next blocker is EF Core, and it is a bigger one than reflection-based discovery was.**
+EF Core is not AOT-compatible: it builds its model at runtime. The supported route is *compiled
+models*, generated to C# at build time by a CLI tool so the model is static
+([ASP.NET Core Native AOT docs](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/native-aot?view=aspnetcore-10.0),
+[State of Native AOT in .NET 10](https://code.soundaranbu.com/state-of-nativeaot-net10)) — verified
+27 Aug 2026. Npgsql, OpenTelemetry and the OAuth stack are each unverified for AOT here too.
+
+Two things follow, and both matter more than installing a linker:
+
+1. **A design question for F1/F2 that AOT depends on:** does `Talent.Mcp.Server.Stdio` need EF Core
+   at all? If the stdio host reaches Postgres directly, AOT hinges on compiled models. If instead
+   the stdio host is a thin client — or the tools that need data are only served over HTTP — the AOT
+   target shrinks to something plausible. **Decide this with the code in front of you, not now.**
+2. **Trim-clean is necessary, not sufficient.** Zero `IL2026`/`IL3050` at analyzer and ILLink level
+   says nothing about runtime reflection that AOT forbids outright. Config A is exactly that lesson:
+   static analysis and runtime disagreed in *direction* — it warned, and the runtime failure was
+   silent rather than loud.
+
+So: the reflection obstacle is gone and the registration decision is made and permanent. Whether
+the AOT goal in the plan's decision table survives contact with EF Core is **an open question for
+F6**, and the plan's cut order already lists AOT first if scope has to give.
+
 ## Cold start: baseline recorded, native number deferred
 
 **Native AOT could not be linked on this machine.** MSVC is present
@@ -122,14 +156,20 @@ A and B are indistinguishable at this sample size, which is the expected result 
 initialisation dominates, not the discovery mechanism. So **choosing explicit registration costs
 nothing at startup either**; it is not a speed/convenience trade, just the correct call.
 
-**F6 must install the C++ Desktop Development workload (or measure in CI, where the runner has it)
-and publish the real native numbers.** Until then no cold-start claim goes in the README.
+**F6 measures this in CI or inside the multi-stage Docker build that F5 needs anyway** — not on a
+developer laptop. A cold-start number in the README has to be reproducible, and one produced by a
+single machine's toolchain is not. Installing the local C++ workload is optional convenience, not a
+prerequisite; and per the scope limit, it should not be done before the host's real dependency graph
+exists, or the number will describe a server that cannot reach a database.
+
+Until then **no cold-start claim goes in the README.**
 
 ## Consequences
 
 - F2 writes six tools with explicit registration and non-static tool types from the first commit.
 - The `Talent.Mcp.Server.Stdio` host — the one launched per session as a `dotnet tool`, where cold
-  start actually matters — can keep `PublishAot=true` as a real goal rather than an aspiration.
+  start actually matters — keeps `PublishAot=true` as a goal that is no longer blocked *by tool
+  discovery*. Its remaining gate is the data-access dependency; see the scope limit.
 - Add a **conformance test asserting `tools/list` returns all six tools by name**. That test is what
   would have caught config A's silent emptiness, and it is cheap. A test that only asserts the
   server starts is worthless here.

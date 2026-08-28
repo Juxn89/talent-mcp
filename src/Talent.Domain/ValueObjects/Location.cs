@@ -12,8 +12,18 @@ public sealed record Location(string City, string CountryCode)
     /// <summary>Length of an ISO 3166-1 alpha-2 country code.</summary>
     public const int CountryCodeLength = 2;
 
-    /// <summary>A location that was not stated. Scores as incompatible rather than as a match.</summary>
-    public static Location Unknown { get; } = new(string.Empty, string.Empty);
+    /// <summary>
+    /// A location that was not stated. Scores as incompatible rather than as a match.
+    /// <para>
+    /// Returns a new instance per access rather than a cached singleton, so no two entities can end up
+    /// sharing one owned-value instance. EF Core attaches change-tracking state to owned instances, and
+    /// a shared one is a hazard there. This is defensive: the not-null violation seen while building the
+    /// seeds turned out to come from sharing whole entity instances (see <c>SeedData.CreateJobs</c>), not
+    /// from this. The allocation is irrelevant and record value equality means nothing relied on
+    /// reference identity.
+    /// </para>
+    /// </summary>
+    public static Location Unknown => new(string.Empty, string.Empty);
 
     /// <summary>Whether this location carries no information.</summary>
     public bool IsUnknown =>

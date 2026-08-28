@@ -156,6 +156,12 @@ Also breaking in this revision, and easy to get wrong:
 /tests
   Talent.Architecture.Tests/   Dependency rule (ArchUnitNET). Written in F1, before there is code to violate it.
   Talent.Domain.Tests/         Pure scoring and normalization, table-driven, no Docker
+  Talent.Infrastructure.Tests/ EF mapping and repositories against real Postgres (Testcontainers).
+                               A SIXTH project the plan does not list, added deliberately: the plan has
+                               no home for "does the mapping actually work against Postgres", and the
+                               answer only exists in the real provider (text[], ILIKE, array
+                               containment, owned-type flattening). Finding a broken mapping in the E2E
+                               suite costs far more than a container start here.
   Talent.Mcp.Tests/            Tools over the in-memory transport
   Talent.Mcp.Conformance/      Protocol conformance per 2026-07-28 (discover, MRTR, cache fields, negotiation)
   Talent.Mcp.E2E/              Real compose: MCP client → HTTP → OAuth → Postgres
@@ -367,6 +373,12 @@ gate, they do not merely report.
    - Scoring and skill normalization, table-driven cases
    - Invariant validation
 
+2b. **Infrastructure** (`Talent.Infrastructure.Tests` — Testcontainers, real Postgres)
+   - EF mapping round-trips: owned types, `text[]` columns, enums stored as text rather than ordinals
+   - Repository filters, and that page ordering is a **total** order — otherwise handle pagination can skip or repeat a row
+   - Seeding is idempotent and converges after a partial insert
+   - The migrations themselves, applied by the fixture: one that does not apply cleanly fails the whole class
+
 3. **Tools** (`Talent.Mcp.Tests` — in-memory transport)
    - Input/output contract, `inputSchema` present on every tool
    - Actionable errors; foreign or expired handles are rejected
@@ -513,6 +525,8 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 11. ❌ **Logging to stdout in a stdio host** — `Host.CreateApplicationBuilder` installs a console logger on **stdout**, which corrupts the JSON-RPC stream; the first "response" you read is a log line. Do `builder.Logging.ClearProviders(); builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);`. This is why stdio hosts log to stderr — the transport breaks otherwise, it is not a preference.
 12. ❌ **Publishing NuGet without SemVer** — breaks A1, which depends on this domain.
 13. ❌ **Pinning package versions in a `.csproj`, or as `Update=` in `Directory.Build.props`** — versions go in `Directory.Packages.props`. See the stack section.
+14. ❌ **Sharing an owned value-object instance between entities** — a `static readonly Location Madrid` referenced by four candidates gives EF Core one owned change-tracking entry with four owners, and `SaveChanges` then writes `NULL` for its columns: `23502: null value in column "city"`, an error that names neither owned types nor sharing. It hides well, because saving each entity alone succeeds and only a batch fails. Expose value-object constants as expression-bodied members (`static Location Madrid => new(...)`), never as cached fields. Records make it worse, not better: value equality means two separately-built instances also compare equal.
+15. ❌ **A test-project condition in the root `Directory.Build.props`** — `IsTestProject` is set by `Microsoft.NET.Test.Sdk` from the project body, which is evaluated after the props import, so the condition never fires. Test-only properties go in `tests/Directory.Build.props`, which chains the root file.
 
 ---
 

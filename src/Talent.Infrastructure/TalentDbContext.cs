@@ -90,6 +90,13 @@ public sealed class TalentDbContext : DbContext
             candidate.Property(c => c.Seniority).HasColumnName("seniority").HasConversion<string>().IsRequired();
             candidate.Property(c => c.WillingToRelocate).HasColumnName("willing_to_relocate").IsRequired();
 
+            // Enums are stored as text, not as their ordinal. An ordinal makes the table unreadable
+            // and silently reinterprets every row if a member is ever inserted in the middle — and A1
+            // reads this schema, so the wrong value would surface in another repository.
+            candidate.Property(c => c.Status).HasColumnName("status").HasConversion<string>().IsRequired();
+            candidate.Property(c => c.RejectionReason).HasColumnName("rejection_reason").HasMaxLength(2_000);
+            candidate.Property(c => c.RejectedAt).HasColumnName("rejected_at");
+
             candidate.OwnsOne(c => c.Location, location =>
             {
                 location.Property(l => l.City).HasColumnName("city").HasMaxLength(120);
@@ -97,6 +104,7 @@ public sealed class TalentDbContext : DbContext
             });
 
             candidate.HasIndex(c => c.Seniority).HasDatabaseName("ix_candidates_seniority");
+            candidate.HasIndex(c => c.Status).HasDatabaseName("ix_candidates_status");
         });
     }
 }

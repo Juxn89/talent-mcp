@@ -11,8 +11,12 @@ using Talent.Domain.Constants;
 /// <param name="CurrencyCode">ISO 4217 currency code, upper-case.</param>
 public sealed record SalaryRange(int Minimum, int Maximum, string CurrencyCode)
 {
-    /// <summary>A band that was not disclosed.</summary>
-    public static SalaryRange NotDisclosed { get; } = new(0, 0, string.Empty);
+    /// <summary>
+    /// A band that was not disclosed. A new instance per access for the same defensive reason as
+    /// <see cref="Location.Unknown"/>: owned-value instances carry EF change-tracking state, so sharing
+    /// one is a hazard worth avoiding even where it is not currently a bug.
+    /// </summary>
+    public static SalaryRange NotDisclosed => new(0, 0, string.Empty);
 
     /// <summary>Whether the posting disclosed any salary information.</summary>
     public bool IsDisclosed => Minimum > 0 || Maximum > 0;

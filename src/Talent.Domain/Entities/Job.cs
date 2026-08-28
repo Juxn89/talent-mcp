@@ -45,29 +45,47 @@ public sealed class Job
         Salary = salary ?? SalaryRange.NotDisclosed;
     }
 
+    /// <summary>
+    /// Private constructor for EF Core materialization.
+    /// <para>
+    /// EF binds constructor parameters by name to scalar properties only, and both
+    /// <see cref="Location"/> and <see cref="Salary"/> are owned navigations it sets afterwards. So the
+    /// public constructor stays the domain-facing one that normalizes and validates, and this exists
+    /// purely as somewhere for the mapping to put values. Never called by domain code.
+    /// </para>
+    /// </summary>
+    private Job()
+    {
+        Title = string.Empty;
+        Description = string.Empty;
+        RequiredSkillIds = [];
+        Location = ValueObjects.Location.Unknown;
+        Salary = SalaryRange.NotDisclosed;
+    }
+
     /// <summary>Stable identifier.</summary>
-    public Guid Id { get; }
+    public Guid Id { get; private set; }
 
     /// <summary>Job title.</summary>
-    public string Title { get; }
+    public string Title { get; private set; }
 
     /// <summary>Free-text description.</summary>
-    public string Description { get; }
+    public string Description { get; private set; }
 
     /// <summary>Canonical skill ids the role requires, de-duplicated and lower-cased.</summary>
-    public IReadOnlyList<string> RequiredSkillIds { get; }
+    public IReadOnlyList<string> RequiredSkillIds { get; private set; }
 
     /// <summary>Seniority the role targets.</summary>
-    public SeniorityLevel Seniority { get; }
+    public SeniorityLevel Seniority { get; private set; }
 
     /// <summary>Where the role is based.</summary>
-    public Location Location { get; }
+    public Location Location { get; private set; }
 
     /// <summary>Whether the role is on site, hybrid or remote.</summary>
-    public WorkArrangement Arrangement { get; }
+    public WorkArrangement Arrangement { get; private set; }
 
     /// <summary>Salary band.</summary>
-    public SalaryRange Salary { get; }
+    public SalaryRange Salary { get; private set; }
 
     /// <summary>
     /// Whether the posting satisfies the domain invariants in <see cref="JobSchema"/>. Validation

@@ -36,6 +36,13 @@
 
   <ItemGroup Label="Persistence — EF Core 10 tracks .NET 10">
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <!--
+      Pinned explicitly even though nothing references it directly: Npgsql.EntityFrameworkCore.PostgreSQL
+      10.0.3 depends on Relational 10.0.4, which conflicts with EF Core 10.0.11 and produces MSB3277
+      ("could not be resolved") in any test project that loads both. CentralPackageTransitivePinningEnabled
+      lifts the transitive to this version instead.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>

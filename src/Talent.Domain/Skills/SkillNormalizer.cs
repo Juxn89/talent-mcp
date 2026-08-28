@@ -127,15 +127,23 @@ public static class SkillNormalizer
             .OrderBy(static n => n, StringComparer.Ordinal)];
     }
 
-    private static bool IsStandaloneMatch(string haystack, int at, int length)
-    {
-        var before = at - 1;
-        var after = at + length;
+    private static bool IsStandaloneMatch(string haystack, int at, int length) =>
+        IsBoundary(haystack, at - 1, step: -1) && IsBoundary(haystack, at + length, step: +1);
 
-        return IsBoundary(haystack, before) && IsBoundary(haystack, after);
-    }
+    /// <summary>
+    /// Characters that appear inside skill names (".net", "c#", "next.js", "react-native") and so
+    /// cannot be unconditional boundaries — otherwise "net" would match inside ".net". They count as a
+    /// boundary only when the character on the far side of them is not alphanumeric, which is how
+    /// sentence punctuation is told apart from a compound token: in "Rust." the '.' ends a sentence, in
+    /// ".net" and "next.js" it joins two parts of one name.
+    /// </summary>
+    private static readonly char[] ContextualChars = ['.', '-', '+', '#', '_'];
 
-    private static bool IsBoundary(string haystack, int index)
+    /// <summary>
+    /// Whether position <paramref name="index"/> is a boundary for a match, looking outward in the
+    /// direction given by <paramref name="step"/> (-1 before the match, +1 after it).
+    /// </summary>
+    private static bool IsBoundary(string haystack, int index, int step)
     {
         if (index < 0 || index >= haystack.Length)
         {
@@ -144,9 +152,21 @@ public static class SkillNormalizer
 
         var c = haystack[index];
 
-        // '.', '-', '+' and '#' are part of skill names (".net", "c#", "next.js", "react-native"),
-        // so they are NOT boundaries — otherwise "net" would match inside ".net".
-        return Array.IndexOf(BoundaryChars, c) >= 0;
+        if (Array.IndexOf(BoundaryChars, c) >= 0)
+        {
+            return true;
+        }
+
+        if (Array.IndexOf(ContextualChars, c) >= 0)
+        {
+            var outward = index + step;
+
+            return outward < 0
+                || outward >= haystack.Length
+                || !char.IsLetterOrDigit(haystack[outward]);
+        }
+
+        return false;
     }
 
     private static bool IsConsumed(bool[] consumed, int at, int length)

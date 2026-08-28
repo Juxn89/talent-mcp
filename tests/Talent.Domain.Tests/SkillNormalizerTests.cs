@@ -64,6 +64,26 @@ public sealed class SkillNormalizerTests
         Assert.Equal(expectedCsv, actual);
     }
 
+    [Theory]
+    // A skill at the end of a sentence. '.' cannot be an unconditional boundary — that would make
+    // "net" match inside ".net" — so it counts as one only when the character beyond it is not
+    // alphanumeric. Found by a use-case test: "some Rust." silently matched nothing.
+    [InlineData("We need some Rust.", "rust")]
+    [InlineData("Rust, Go and Docker.", "docker,go,rust")]
+    [InlineData("Experience with .NET.", "dotnet")]
+    [InlineData("Deep .NET knowledge", "dotnet")]
+    [InlineData("Uses Next.js in production", "nextjs")]
+    [InlineData("Uses Next.js.", "nextjs")]
+    [InlineData("Node.js on the backend", "nodejs")]
+    [InlineData("React-Native apps", "react-native")]
+    [InlineData("Strong C#.", "csharp")]
+    public void Punctuation_around_a_skill_does_not_hide_it(string text, string expectedCsv)
+    {
+        var actual = string.Join(",", SkillNormalizer.Extract(text).Select(s => s.Id));
+
+        Assert.Equal(expectedCsv, actual);
+    }
+
     [Fact]
     public void Extract_returns_distinct_skills_ordered_by_id()
     {

@@ -30,7 +30,9 @@ public sealed class HandleCodec : IDisposable
     public const int MinimumKeyLengthBytes = 32;
 
     private const int TimestampLengthBytes = sizeof(long);
+    private const int PayloadTypeMarkerLengthBytes = sizeof(ulong);
     private const int SignatureLengthBytes = 32;
+    private const int HeaderLengthBytes = TimestampLengthBytes + PayloadTypeMarkerLengthBytes;
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -87,13 +89,17 @@ public sealed class HandleCodec : IDisposable
         var expiresAt = this.timeProvider.GetUtcNow().Add(timeToLive).ToUnixTimeSeconds();
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload, PayloadJsonOptions);
 
-        // Layout: [8-byte big-endian expiry][payload][32-byte HMAC over the two preceding parts].
-        // The expiry sits inside the signed region, so extending a handle's life requires the key.
-        var signedLength = TimestampLengthBytes + payloadBytes.Length;
+        // Layout: [8-byte big-endian expiry][8-byte payload-type marker][payload][32-byte HMAC over
+        // everything before it]. Both header fields sit inside the signed region, so extending a
+        // handle's life or repurposing it for another tool requires the key.
+        var signedLength = HeaderLengthBytes + payloadBytes.Length;
         var buffer = new byte[signedLength + SignatureLengthBytes];
 
         BinaryPrimitives.WriteInt64BigEndian(buffer.AsSpan(0, TimestampLengthBytes), expiresAt);
-        payloadBytes.CopyTo(buffer.AsSpan(TimestampLengthBytes));
+        BinaryPrimitives.WriteUInt64BigEndian(
+            buffer.AsSpan(TimestampLengthBytes, PayloadTypeMarkerLengthBytes),
+            PayloadTypeMarker<TPayload>());
+        payloadBytes.CopyTo(buffer.AsSpan(HeaderLengthBytes));
 
         var signature = this.ComputeSignature(buffer.AsSpan(0, signedLength));
         signature.CopyTo(buffer.AsSpan(signedLength));
@@ -132,7 +138,7 @@ public sealed class HandleCodec : IDisposable
             return false;
         }
 
-        if (buffer.Length < TimestampLengthBytes + SignatureLengthBytes)
+        if (buffer.Length < HeaderLengthBytes + SignatureLengthBytes)
         {
             return false;
         }
@@ -153,16 +159,26 @@ public sealed class HandleCodec : IDisposable
             return false;
         }
 
+        // The type marker is what makes a replayed handle detectable. Relying on deserialization to
+        // fail does NOT work: System.Text.Json is lenient, so a shortlist payload read as a
+        // pagination cursor yields an object with default members rather than throwing, and the tool
+        // would page from offset 0 believing the handle was its own. Measured, not assumed.
+        var marker = BinaryPrimitives.ReadUInt64BigEndian(
+            buffer.AsSpan(TimestampLengthBytes, PayloadTypeMarkerLengthBytes));
+
+        if (marker != PayloadTypeMarker<TPayload>())
+        {
+            return false;
+        }
+
         try
         {
             payload = JsonSerializer.Deserialize<TPayload>(
-                buffer.AsSpan(TimestampLengthBytes, signedLength - TimestampLengthBytes),
+                buffer.AsSpan(HeaderLengthBytes, signedLength - HeaderLengthBytes),
                 PayloadJsonOptions);
         }
         catch (JsonException)
         {
-            // An authentic handle whose payload does not fit TPayload: a client replayed a handle
-            // minted for a different tool. Not an authentication failure, but not usable either.
             return false;
         }
 
@@ -179,6 +195,29 @@ public sealed class HandleCodec : IDisposable
 
         this.hmac.Dispose();
         this.disposed = true;
+    }
+
+    /// <summary>
+    /// A stable 64-bit marker for a payload type, derived from its full name.
+    /// <para>
+    /// Derived from the type name rather than assigned by hand so no registry has to be maintained,
+    /// and truncated from SHA-256 rather than using <see cref="string.GetHashCode()"/> because that is
+    /// randomized per process — a marker that changes on restart would invalidate every outstanding
+    /// handle. Not a security boundary: the signature is. This only stops an authentic handle being
+    /// read as the wrong shape.
+    /// </para>
+    /// <para>
+    /// Consequence worth knowing: renaming or moving a payload type invalidates handles already in
+    /// flight. That is acceptable because handle lifetimes are minutes, and it is safer than the
+    /// alternative of silently reinterpreting them.
+    /// </para>
+    /// </summary>
+    private static ulong PayloadTypeMarker<TPayload>()
+    {
+        var name = typeof(TPayload).FullName ?? typeof(TPayload).Name;
+        var digest = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(name));
+
+        return BinaryPrimitives.ReadUInt64BigEndian(digest);
     }
 
     private byte[] ComputeSignature(ReadOnlySpan<byte> data)

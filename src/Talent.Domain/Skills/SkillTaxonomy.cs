@@ -116,6 +116,7 @@ public static class SkillTaxonomy
         ("py", "python"),
         ("node", "nodejs"),
         ("node js", "nodejs"),
+        ("node.js", "nodejs"),
         ("golang", "go"),
         ("grpc", "grpc"),
         ("ts", "typescript"),

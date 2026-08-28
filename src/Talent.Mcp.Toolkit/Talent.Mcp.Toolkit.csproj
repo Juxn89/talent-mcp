@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Talent.Mcp.Toolkit</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Talent.Mcp.Toolkit</PackageId>
+    <Description>Domain-agnostic Model Context Protocol primitives for the 2026-07-28 revision: signed TTL-bounded handles, cache policies, a Postgres task store, and OpenTelemetry context extraction from _meta.</Description>
+    <PackageTags>mcp;model-context-protocol;ai;llm</PackageTags>
+    <!-- Library code: deadlocks in console/tool hosts if ConfigureAwait(false) is omitted. -->
+    <NoWarn>$(NoWarn)</NoWarn>
+  </PropertyGroup>
+  <!--
+    NO ProjectReference to Talent.Domain. This ships to NuGet as a reusable protocol library, so no
+    recruitment concept may leak into it. Talent.Architecture.Tests enforces that.
+  -->
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+</Project>

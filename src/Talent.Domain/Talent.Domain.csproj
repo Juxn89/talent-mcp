@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Talent.Domain</RootNamespace>
+    <Description>Recruitment domain: entities, enums, and the pure scoring and skill-normalization functions. No framework dependencies.</Description>
+  </PropertyGroup>
+  <!--
+    Deliberately EMPTY of PackageReference items. Talent.Domain knows nobody: no EF Core, no MCP
+    SDK, no ASP.NET. Talent.Architecture.Tests fails the build if that changes.
+  -->
+</Project>

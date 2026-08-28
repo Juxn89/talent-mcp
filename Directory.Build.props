@@ -29,13 +29,16 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
-  <!-- Test projects: no XML docs, and CS1591 (missing doc comment) is noise there -->
-  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+  <!--
+    Test-project overrides live in tests/Directory.Build.props, NOT here.
+    `IsTestProject` is set by Microsoft.NET.Test.Sdk, which is a PackageReference in the project
+    body — and this file is imported *before* the body, so a `Condition="'$(IsTestProject)' == 'true'"`
+    PropertyGroup here can never fire. Same import-ordering trap as `PackageReference Update=`
+    (NU1015). MSBuild picks the nearest Directory.Build.props walking up, so tests/ has its own,
+    which imports this one and then adds what it needs.
+  -->
 
-  <ItemGroup Condition="'$(IsTestProject)' == ''">
+  <ItemGroup>
     <CompilerVisibleProperty Include="CI" />
   </ItemGroup>
 </Project>

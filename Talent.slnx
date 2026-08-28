@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Talent.Application/Talent.Application.csproj" />
+    <Project Path="src/Talent.Domain/Talent.Domain.csproj" />
+    <Project Path="src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
+    <Project Path="src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Talent.Architecture.Tests/Talent.Architecture.Tests.csproj" />
+    <Project Path="tests/Talent.Domain.Tests/Talent.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

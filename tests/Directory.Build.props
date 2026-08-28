@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    Imports the repo-root Directory.Build.props (MSBuild stops at the nearest one, so it must be
+    chained explicitly), then applies what only test projects need.
+
+    This exists because `IsTestProject` is set by Microsoft.NET.Test.Sdk from the project body,
+    which is evaluated *after* Directory.Build.props — so a condition on it in the root file can
+    never fire. Setting it here works: this file is still a props file, but the property is
+    unconditional.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove($(MSBuildThisFile), $(MSBuildThisFileDirectory)../))" />
+
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <!-- Test classes are not public API; CS1591 (missing XML doc) would be pure noise here. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

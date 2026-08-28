@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Talent.Infrastructure</RootNamespace>
+    <Description>Adapters implementing the Application ports: EF Core/Npgsql persistence, migrations and seeds.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Talent.Application/Talent.Application.csproj" />
+    <ProjectReference Include="../Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+</Project>

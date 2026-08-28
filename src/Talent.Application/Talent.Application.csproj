@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Talent.Application</RootNamespace>
+    <Description>Use cases and ports (repository and codec interfaces). References Talent.Domain only.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Talent.Domain/Talent.Domain.csproj" />
+  </ItemGroup>
+</Project>

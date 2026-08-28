@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

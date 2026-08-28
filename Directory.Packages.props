@@ -45,6 +45,12 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!--
+      Raw Npgsql for Talent.Mcp.Toolkit. The toolkit ships to NuGet, so it deliberately does NOT
+      take an EF Core dependency: PostgresMcpTaskStore owns four tiny tables and needs a raw
+      connection for LISTEN/NOTIFY anyway, which EF has no abstraction for.
+    -->
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup Label="Auth — OAuth 2.1 resource server">

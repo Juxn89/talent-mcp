@@ -14,5 +14,7 @@
   -->
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.Core" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Tasks" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 </Project>

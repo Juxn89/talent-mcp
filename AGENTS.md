@@ -349,7 +349,7 @@ Keycloak realm is written, and the E2E test asserts that a token missing the req
 Not a wrapper around the SDK. These are the pieces the SDK does not ship and the new revision makes
 necessary:
 
-- `PostgresMcpTaskStore : IMcpTaskStore` — the SDK only ships `InMemoryMcpTaskStore`; without persistence a restart loses in-flight tasks.
+- `PostgresMcpTaskStore : IMcpTaskStore` — the SDK only ships `InMemoryMcpTaskStore`; without persistence a restart loses in-flight tasks. **The hard part is not persistence, it is the `InputResponseReceived` event**: the SDK subscribes to it in the process running the task and blocks, while `ResolveInputRequestsAsync` is called by whichever process handles the client's follow-up request — a different one, since this server is stateless. Solved with Postgres `LISTEN`/`NOTIFY` plus a sweep fallback, per [ADR-0003](./docs/adr/0003-cross-node-task-input-responses.md). Uses raw Npgsql, not EF Core, so the NuGet package does not impose EF on consumers.
 - `HandleCodec` — minted, **signed** and TTL-bounded opaque handles replacing sessions (pagination cursors, in-progress shortlists). Signed so a client cannot forge one.
 - `ttlMs` / `cacheScope` policies per primitive, and deterministic tool ordering.
 - OTel context extraction from `_meta` (`traceparent`/`tracestate`/`baggage`) into an `Activity`.
@@ -536,6 +536,7 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 - [The plan](./docs/plans/a2-talent-mcp.md) — source of truth for scope and phases
 - [ADR-0001 · Streamable HTTP session mode](./docs/adr/0001-streamable-http-session-mode.md)
 - [ADR-0002 · Native AOT and explicit tool registration](./docs/adr/0002-native-aot-and-explicit-tool-registration.md)
+- [ADR-0003 · Cross-node task input responses](./docs/adr/0003-cross-node-task-input-responses.md)
 - [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
 
 **External:**

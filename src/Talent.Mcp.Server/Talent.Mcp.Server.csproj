@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Talent.Mcp.Server</RootNamespace>
+    <Description>Streamable HTTP (stateless) MCP host for the recruitment tool surface.</Description>
+    <IsPackable>false</IsPackable>
+    <!-- A web host has no public API to document; CS1591 on Program would be noise. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <UserSecretsId>talent-mcp-server</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
+    <!-- The composition root is the only place that knows EF Core exists. See ADR-0004. -->
+    <ProjectReference Include="../Talent.Infrastructure/Talent.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+</Project>

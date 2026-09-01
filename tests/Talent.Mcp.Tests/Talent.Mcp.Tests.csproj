@@ -6,9 +6,12 @@
     <ProjectReference Include="../../src/Talent.Application/Talent.Application.csproj" />
     <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
     <ProjectReference Include="../../src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+    <ProjectReference Include="../../src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- The tool tests run a real server and a real client over paired in-memory pipes. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>

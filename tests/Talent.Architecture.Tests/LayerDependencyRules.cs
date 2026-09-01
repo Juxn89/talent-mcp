@@ -37,9 +37,15 @@ public sealed class LayerDependencyRules
     private static readonly System.Reflection.Assembly ApplicationAssembly = typeof(Application.Ports.IJobRepository).Assembly;
     private static readonly System.Reflection.Assembly InfrastructureAssembly = typeof(Infrastructure.TalentDbContext).Assembly;
     private static readonly System.Reflection.Assembly ToolkitAssembly = typeof(Mcp.Toolkit.HandleCodec).Assembly;
+    private static readonly System.Reflection.Assembly ToolsAssembly = typeof(Mcp.Tools.TalentTools).Assembly;
 
     private static readonly Architecture Architecture = new ArchLoader()
-        .LoadAssemblies(DomainAssembly, ApplicationAssembly, InfrastructureAssembly, ToolkitAssembly)
+        .LoadAssemblies(
+            DomainAssembly,
+            ApplicationAssembly,
+            InfrastructureAssembly,
+            ToolkitAssembly,
+            ToolsAssembly)
         .Build();
 
     private static readonly IObjectProvider<IType> DomainLayer =
@@ -53,6 +59,9 @@ public sealed class LayerDependencyRules
 
     private static readonly IObjectProvider<IType> ToolkitLayer =
         Types().That().ResideInAssembly(ToolkitAssembly).As("Talent.Mcp.Toolkit");
+
+    private static readonly IObjectProvider<IType> ToolsLayer =
+        Types().That().ResideInAssembly(ToolsAssembly).As("Talent.Mcp.Tools");
 
     /// <summary>
     /// The loaded architecture, exposed so <see cref="LayersAreNotEmpty"/> can assert that every layer
@@ -97,6 +106,21 @@ public sealed class LayerDependencyRules
                 + "recruitment concept leaking into it makes it a private library with a public name. "
                 + "That is why HandleCodec implements no application interface and Infrastructure "
                 + "supplies the SignedHandleCodec adapter instead.")
+            .WithoutRequiringPositiveResults()
+            .Check(Architecture);
+    }
+
+    [Fact]
+    public void Tools_reach_data_only_through_the_ports()
+    {
+        Types().That().Are(ToolsLayer)
+            .Should().NotDependOnAny(InfrastructureLayer)
+            .Because(
+                "the tool surface is shared verbatim by both hosts (ADR-0004), and it talks to use "
+                + "cases and ports only. A tool reaching for EfJobRepository or a DbContext would put "
+                + "EF Core into the stdio host's tool layer and make 'the tools go through ports' an "
+                + "intention rather than a constraint. Only the two composition roots reference "
+                + "Talent.Infrastructure.")
             .WithoutRequiringPositiveResults()
             .Check(Architecture);
     }

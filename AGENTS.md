@@ -91,13 +91,20 @@ not AOT-compatible, so the real gate is the data-access dependency, decided in F
 Three rules, all load-bearing:
 
 1. **Register with `WithTools<T>()`, one call per tool type.** Never `WithToolsFromAssembly()`.
-   Registration order is also how deterministic tool ordering is achieved.
+   **Registration order is *not* wire order** — measured 1 Sep 2026: four tools registered as search /
+   get / extract / score came back from `tools/list` alphabetically. Determinism is imposed by an
+   `AddListToolsFilter` that sorts by `Mcp.ToolNames.All`, in `TalentTools.AddTalentTools`. An earlier
+   revision of this file and of ADR-0002 claimed otherwise; both are corrected.
 2. **Tool types must be non-static.** `WithTools<T>()` rejects static classes
    (`CS0718: static types cannot be used as type arguments`), so the SDK docs' `public static class`
    shape does not work. Use `sealed class` with static tool methods.
 3. **Always pin the wire name in the attribute.** The SDK derives it from the method name,
    snake-cased — `ExtractSkills()` publishes as `extract_skills` with no attribute argument. Relying
    on that means a C# rename silently changes the protocol contract.
+4. **Set `UseStructuredContent = true`.** It defaults to **false**, so a tool returning a typed record
+   sends its payload as a JSON string inside a text block and `structuredContent` comes back `null` —
+   the client re-parses text the server had already serialized. Verified 1 Sep 2026; see
+   [the F2 verification record](./docs/verification/sdk-2.2.0-tool-surface-behaviour.md).
 
 ```csharp
 [McpServerToolType]
@@ -149,8 +156,14 @@ Also breaking in this revision, and easy to get wrong:
                                IHandleCodec, IShortlistScorer. References Domain only.
   Talent.Infrastructure/       Adapters: EF Core/Npgsql, migrations, seeds, Keycloak client,
                                OTel exporters.
+  Talent.Mcp.Tools/            Presentation: the six MCP tool types, their wire contracts and the
+                               shared registration. References Application + Toolkit, and NEITHER
+                               Talent.Infrastructure NOR ModelContextProtocol.AspNetCore — both hosts
+                               load it, and one of them is the stdio host. See ADR-0004.
   Talent.Mcp.Server/           Presentation: ASP.NET Core Streamable HTTP (stateless) → GHCR image
   Talent.Mcp.Server.Stdio/     Presentation: stdio host → dotnet tool `talent-mcp`
+                               Serves the SAME six tools and composes the SAME EF Core adapters as the
+                               HTTP host — not a reduced build, not a proxy (ADR-0004).
   Talent.Mcp.Toolkit/          Domain-agnostic technical library (protocol primitives) → NuGet
 
 /tests
@@ -248,7 +261,7 @@ Six constant groups, fixed from the first commit. An MCP server is fertile groun
 | `McpMetaKeys` | `io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, `logLevel`, `traceparent`, `tracestate`, `baggage` |
 | `OAuthScopes` | `talent.jobs.read`, `talent.candidates.read`, `talent.candidates.write`, `talent.candidates.reject` |
 | `ProtocolVersions` | the supported revision (`2026-07-28`) and the downgrade-interop ones (`2025-11-25`, …) |
-| `McpErrorCodes` | the reserved range `-32020…-32099` — never raw numbers in code |
+| ~~`McpErrorCodes`~~ | **Dropped, verified 1 Sep 2026.** The band is not free — the SDK's own `McpErrorCode` already defines `-32020` `HeaderMismatch`, `-32021`, `-32022` and `-32042` — and `McpException` in 2.2.0 exposes no error-code member at all, so a tool cannot emit a custom code. Tool failures go in the result: throw `McpException` with an actionable message and the SDK returns `isError: true` with the text preserved |
 | `TalentOptions` | cache TTLs, handle TTLs, page size, retries, timeouts → bound via `IOptions<T>` |
 
 ### MCP protocol identity
@@ -527,6 +540,10 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 13. ❌ **Pinning package versions in a `.csproj`, or as `Update=` in `Directory.Build.props`** — versions go in `Directory.Packages.props`. See the stack section.
 14. ❌ **Sharing an owned value-object instance between entities** — a `static readonly Location Madrid` referenced by four candidates gives EF Core one owned change-tracking entry with four owners, and `SaveChanges` then writes `NULL` for its columns: `23502: null value in column "city"`, an error that names neither owned types nor sharing. It hides well, because saving each entity alone succeeds and only a batch fails. Expose value-object constants as expression-bodied members (`static Location Madrid => new(...)`), never as cached fields. Records make it worse, not better: value equality means two separately-built instances also compare equal.
 15. ❌ **A test-project condition in the root `Directory.Build.props`** — `IsTestProject` is set by `Microsoft.NET.Test.Sdk` from the project body, which is evaluated after the props import, so the condition never fires. Test-only properties go in `tests/Directory.Build.props`, which chains the root file.
+16. ❌ **Assuming a typed return reaches `structuredContent`** — `UseStructuredContent` defaults to `false`. Set it on every tool; `ToolHarness.StructuredOf` in the tests fails loudly with this exact finding if one is forgotten.
+17. ❌ **Treating a null field as present-and-null on the wire** — the serializer omits nulls, so `nextPageHandle` is *absent* on the last page, not `null`. Any "no more data" signal a client needs must be an explicit field (`hasMore`), never the absence of another one.
+18. ❌ **Assuming `tools/list` order follows the `WithTools<T>()` calls** — it does not; see the tool-registration rules. The order comes from a concurrent collection, so it is neither the registration order nor guaranteed stable across restarts.
+19. ❌ **Forgetting that 2026-07-28 promotes request metadata to headers** — a raw HTTP call needs `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` on `tools/call`, *and* `_meta/io.modelcontextprotocol/protocolVersion` plus `_meta/io.modelcontextprotocol/clientCapabilities` in the body. A mismatch answers `-32020`, a missing `_meta` field `-32602`. The SDK client does all of this; a hand-rolled curl or a conformance assertion does not.
 
 ---
 
@@ -537,7 +554,9 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 - [ADR-0001 · Streamable HTTP session mode](./docs/adr/0001-streamable-http-session-mode.md)
 - [ADR-0002 · Native AOT and explicit tool registration](./docs/adr/0002-native-aot-and-explicit-tool-registration.md)
 - [ADR-0003 · Cross-node task input responses](./docs/adr/0003-cross-node-task-input-responses.md)
+- [ADR-0004 · One tool surface, two hosts](./docs/adr/0004-shared-tool-surface-across-both-hosts.md)
 - [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
+- [Verification · What SDK 2.2.0 actually does with a tool surface](./docs/verification/sdk-2.2.0-tool-surface-behaviour.md)
 
 **External:**
 - [The 2026-07-28 Specification](https://blog.modelcontextprotocol.io/posts/2026-07-28/)

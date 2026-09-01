@@ -80,6 +80,54 @@ public sealed class ForbiddenAssemblyReferences
             + "domain-agnostic protocol primitives. Found: " + string.Join(", ", referenced));
     }
 
+    [Fact]
+    public void Tools_reference_no_persistence_or_web_assembly()
+    {
+        // A narrower list than the layers above: the tool surface legitimately references the MCP SDK
+        // and the DI abstractions — it is presentation. What it must not reach for is persistence or
+        // ASP.NET, the first because tools go through ports and the second because the same assembly is
+        // loaded by the stdio host, where cold start is the metric that matters (ADR-0004).
+        string[] forbiddenForTools =
+        [
+            "Microsoft.EntityFrameworkCore",
+            "Npgsql",
+            "Microsoft.AspNetCore",
+        ];
+
+        var violations = typeof(Mcp.Tools.TalentTools).Assembly
+            .GetReferencedAssemblies()
+            .Select(static a => a.Name ?? string.Empty)
+            .Where(name => forbiddenForTools.Any(
+                prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            violations.Length == 0,
+            "Talent.Mcp.Tools references forbidden assemblies: " + string.Join(", ", violations));
+    }
+
+    [Fact]
+    public void Tools_do_not_reference_the_infrastructure_assembly()
+    {
+        var referenced = typeof(Mcp.Tools.TalentTools).Assembly
+            .GetReferencedAssemblies()
+            .Select(static a => a.Name ?? string.Empty)
+            .Where(static name => name.StartsWith("Talent.Infrastructure", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        // The package-prefix test above is about NuGet dependencies and does not catch this: a
+        // `typeof(TalentDbContext)` in the tool layer adds a reference to Talent.Infrastructure without
+        // adding one to Microsoft.EntityFrameworkCore. Verified 1 Sep 2026 by injecting exactly that —
+        // the prefix test stayed green and this one did not exist yet.
+        Assert.True(
+            referenced.Length == 0,
+            "Talent.Mcp.Tools references " + string.Join(", ", referenced)
+            + ". Tools reach data through the Application ports; only the hosts' composition roots "
+            + "reference Talent.Infrastructure (ADR-0004).");
+    }
+
     private static void AssertNoForbiddenReferences(Assembly assembly, string because)
     {
         var violations = assembly

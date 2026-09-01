@@ -35,6 +35,7 @@ public sealed class LayersAreNotEmpty
     [InlineData("Talent.Application")]
     [InlineData("Talent.Infrastructure")]
     [InlineData("Talent.Mcp.Toolkit")]
+    [InlineData("Talent.Mcp.Tools")]
     public void Layer_is_loaded_and_has_types(string assemblyName)
     {
         var types = LayerDependencyRules.LoadedArchitecture.Types

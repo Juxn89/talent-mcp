@@ -32,6 +32,13 @@
   <!-- Generic host for the stdio tool host; the MCP package does not bring it transitively. -->
   <ItemGroup Label="Hosting">
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <!--
+      Configuration binding for the composition root: IConfiguration.Get<T>() lives in the Binder
+      package, not in Configuration.Abstractions. Referenced explicitly rather than relied on
+      transitively through EF Core, so a future EF trim of its own dependencies cannot silently
+      remove it.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup Label="Persistence — EF Core 10 tracks .NET 10">

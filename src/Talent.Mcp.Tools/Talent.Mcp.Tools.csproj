@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Talent.Mcp.Tools</RootNamespace>
+    <Description>The six MCP tools of the recruitment surface, shared verbatim by the Streamable HTTP host and the stdio host.</Description>
+  </PropertyGroup>
+  <!--
+    NO ProjectReference to Talent.Infrastructure, and NO ModelContextProtocol.AspNetCore.
+    Per ADR-0004: the tools reach data through the Application ports, and only the two hosts'
+    composition roots know that EF Core exists. Keeping ASP.NET out also keeps it out of the stdio
+    host, which is the process where cold start actually matters.
+    Talent.Architecture.Tests enforces the first half; the missing PackageReference enforces the second.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../Talent.Application/Talent.Application.csproj" />
+    <ProjectReference Include="../Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The hosting/DI package: brings ModelContextProtocol.Core for the attributes, and the
+         generic WithTools<T>() that ADR-0002 makes mandatory. Not the AspNetCore one. -->
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+</Project>

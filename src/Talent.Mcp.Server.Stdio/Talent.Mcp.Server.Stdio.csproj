@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Talent.Mcp.Server.Stdio</RootNamespace>
+    <Description>stdio MCP host for the recruitment tool surface, published as the `talent-mcp` dotnet tool.</Description>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      NO ModelContextProtocol.AspNetCore here, and no reference to the HTTP host. This is the process
+      launched once per client session, so cold start is the metric that matters (ADR-0002). Packaging
+      as a dotnet tool happens in F5.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
+    <ProjectReference Include="../Talent.Infrastructure/Talent.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Microsoft.NET.Sdk does not include appsettings.json the way the Web SDK does. -->
+    <None Include="appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+</Project>

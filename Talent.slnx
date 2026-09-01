@@ -3,7 +3,10 @@
     <Project Path="src/Talent.Application/Talent.Application.csproj" />
     <Project Path="src/Talent.Domain/Talent.Domain.csproj" />
     <Project Path="src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
+    <Project Path="src/Talent.Mcp.Server.Stdio/Talent.Mcp.Server.Stdio.csproj" />
+    <Project Path="src/Talent.Mcp.Server/Talent.Mcp.Server.csproj" />
     <Project Path="src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+    <Project Path="src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Talent.Architecture.Tests/Talent.Architecture.Tests.csproj" />

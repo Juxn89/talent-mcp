@@ -7,6 +7,7 @@
     <ProjectReference Include="../../src/Talent.Application/Talent.Application.csproj" />
     <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
     <ProjectReference Include="../../src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
+    <ProjectReference Include="../../src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TngTech.ArchUnitNET.xUnit" />

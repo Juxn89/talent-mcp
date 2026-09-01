@@ -89,9 +89,16 @@ public sealed class ExtractSkillsTool   // NOT static
 }
 ```
 
-Explicit registration also buys the deterministic tool ordering the revision asks for: the
-registration order is the source of truth, rather than whatever order reflection happens to
-enumerate members in.
+> **Corrected 1 Sep 2026.** An earlier version of this ADR claimed here that explicit registration
+> *also* buys the deterministic tool ordering the revision asks for, because "the registration order is
+> the source of truth". **That is wrong.** Measured in F2: four tools registered as search / get /
+> extract / score came back from `tools/list` alphabetically. `WithTools<T>()` adds to a
+> `McpServerPrimitiveCollection`, and the wire order is that collection's enumeration order, not the
+> sequence of builder calls. Determinism is imposed instead by an `AddListToolsFilter` that sorts by
+> `Mcp.ToolNames.All` — see
+> [the F2 verification record](../verification/sdk-2.2.0-tool-surface-behaviour.md). Nothing else in
+> this ADR depends on that claim: explicit registration is still mandatory, for the trimming reason
+> measured above.
 
 ## Two incidental findings worth keeping
 
@@ -126,6 +133,12 @@ Two things follow, and both matter more than installing a linker:
    at all? If the stdio host reaches Postgres directly, AOT hinges on compiled models. If instead
    the stdio host is a thin client — or the tools that need data are only served over HTTP — the AOT
    target shrinks to something plausible. **Decide this with the code in front of you, not now.**
+
+   > **Closed 1 Sep 2026 by [ADR-0004](./0004-shared-tool-surface-across-both-hosts.md): yes, it
+   > does.** Both hosts serve all six tools and both compose the same EF Core adapters, because the
+   > tool surface is the product and shrinking it for the stdio host would fork the conformance suite.
+   > So the AOT gate named below was walked into deliberately. F6 measures compiled-models AOT against
+   > the *real* dependency graph, and a documented finding is an acceptable outcome.
 2. **Trim-clean is necessary, not sufficient.** Zero `IL2026`/`IL3050` at analyzer and ILLink level
    says nothing about runtime reflection that AOT forbids outright. Config A is exactly that lesson:
    static analysis and runtime disagreed in *direction* — it warned, and the runtime failure was

@@ -4,9 +4,9 @@
 |---|---|
 | **Date** | 1 Sep 2026 |
 | **Phase** | F2 (MCP tools) |
-| **Method** | A real MCP server and a real MCP client over paired in-memory pipes, plus a reflection dump of the pinned 2.2.0 assemblies from the local NuGet cache |
-| **Why** | Ten assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
-| **Updated** | 2 Sep 2026 (twice) — findings 5 to 8 from `reject_candidate`/MRTR; findings 9 to 10 from `bulk_score_shortlist`/Tasks |
+| **Method** | A real MCP server and a real MCP client over paired in-memory pipes, plus a reflection dump of the pinned 2.2.0 assemblies from the local NuGet cache, plus (finding 11) the real HTTP host against real Postgres in `Talent.Mcp.E2E` |
+| **Why** | Eleven assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
+| **Updated** | 2 Sep 2026 (three times) — findings 5 to 8 from `reject_candidate`/MRTR; findings 9 to 10 from `bulk_score_shortlist`/Tasks; finding 11 from the first `Talent.Mcp.E2E` run |
 
 Everything below was observed, not read from release notes. The probe was a throwaway test that printed
 `tools/list` and four tool calls verbatim; the assertions it produced now live in
@@ -272,6 +272,24 @@ The error names the expected value. **`Mcp-Name` must equal whatever the body's 
 is for that method** — `name` for `tools/call`, `taskId` for `tasks/get` (and, by the same logic,
 `cancelTask`'s `taskId`). The header check is generic across methods, not `tools/call`-specific. Only
 matters for a hand-rolled request; the SDK client sets it correctly.
+
+## 11. `CallToolResult.IsError` is `bool?`, and success omits it — not `false`
+
+Measured 2 Sep 2026, writing `Talent.Mcp.E2E` against the real HTTP host. The same null-omission rule
+as finding 3, but on the *client* side of the wire rather than a tool's own payload, and it fails
+silently at compile time: `Assert.False(result.IsError, message)` compiles cleanly against
+`bool? IsError`, then fails every successful call at runtime, because `Assert.False` requires the value
+to be exactly `false` and a successful result's `IsError` is `null`.
+
+Four of `Talent.Mcp.E2E`'s six tests failed this way on the first run, all with the same shape: the
+"error message" xUnit printed was the call's own successful `structuredContent`, dumped verbatim — the
+SDK apparently still emits the JSON as a text block alongside `structuredContent` even with
+`UseStructuredContent = true`, so `TextOf(result)` was not empty, it was just not an error. `ToolHarness`
+in `Talent.Mcp.Tests` already gets this right (`if (result.IsError is true)` in `StructuredOf`), which is
+why the in-memory suite never hit it — but a raw `result.IsError` in a new test file compiles fine and
+does not.
+
+**Guard is `result.IsError is true`, never `result.IsError` or `result.IsError == false`.**
 
 ---
 

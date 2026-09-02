@@ -12,6 +12,7 @@
     <Project Path="tests/Talent.Architecture.Tests/Talent.Architecture.Tests.csproj" />
     <Project Path="tests/Talent.Domain.Tests/Talent.Domain.Tests.csproj" />
     <Project Path="tests/Talent.Infrastructure.Tests/Talent.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Talent.Mcp.E2E/Talent.Mcp.E2E.csproj" />
     <Project Path="tests/Talent.Mcp.Tests/Talent.Mcp.Tests.csproj" />
   </Folder>
 </Solution>

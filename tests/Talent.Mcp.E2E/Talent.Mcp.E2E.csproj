@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Talent.Mcp.E2E</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!--
+      Web SDK, not the plain one: this suite builds and starts a real Kestrel-backed WebApplication in
+      process (see RealServerFixture) rather than driving the server through the in-memory pipe transport
+      Talent.Mcp.Tests uses. That is the point of an E2E level — search_jobs's handle pagination and
+      reject_candidate's MRTR round-trip travel over an actual HTTP socket, with real header binding and
+      real JSON-RPC framing, the same as a client on the network would see.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- The HTTP transport side of the host; Talent.Mcp.Tools brings the client side transitively. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+</Project>

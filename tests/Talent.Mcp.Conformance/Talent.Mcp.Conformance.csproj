@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Talent.Mcp.Conformance</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!--
+      Web SDK, not the plain one, for the same reason as Talent.Mcp.E2E: this suite starts a real
+      Kestrel-backed WebApplication in process (see ConformanceServerFixture) because every assertion
+      here is about Streamable HTTP transport behaviour itself — GET/DELETE status codes, the absence of
+      a session header, raw JSON-RPC header/meta requirements — none of which the in-memory pipe
+      transport in Talent.Mcp.Tests can even observe, since it has no HTTP layer at all.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- The HTTP transport side of the host; Talent.Mcp.Tools brings the client side transitively. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+</Project>

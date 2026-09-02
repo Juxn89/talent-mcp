@@ -21,6 +21,20 @@ public static class Mcp
     /// <summary>Header carrying the region a read should be served from. See <c>get_job</c>.</summary>
     public const string RegionHeader = "Region";
 
+    /// <summary>
+    /// Keys identifying the MRTR input requests this server can raise.
+    /// <para>
+    /// The key is the correlation id between the <c>input_required</c> result and the
+    /// <c>inputResponses</c> entry the client sends back, so it is part of the wire contract and belongs
+    /// here rather than inlined at the throw site.
+    /// </para>
+    /// </summary>
+    public static class InputRequestKeys
+    {
+        /// <summary>Confirmation of a candidate rejection. See <c>reject_candidate</c>.</summary>
+        public const string ConfirmRejection = "confirm_rejection";
+    }
+
     /// <summary>Protocol revisions this server speaks.</summary>
     public static class ProtocolVersions
     {

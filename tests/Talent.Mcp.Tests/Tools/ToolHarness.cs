@@ -55,18 +55,38 @@ internal sealed class ToolHarness : IAsyncDisposable
     /// <param name="candidates">Candidate repository fake.</param>
     /// <param name="options">Tunables, defaulted when omitted.</param>
     /// <param name="timeProvider">Clock for handle expiry, defaulted when omitted.</param>
+    /// <param name="elicitationHandler">
+    /// How the client answers an MRTR elicitation. The SDK client drives the whole round-trip itself
+    /// when this is set — it sees <c>input_required</c>, calls this, and retries with
+    /// <c>inputResponses</c> and the server's <c>requestState</c>. Leaving it null makes the client
+    /// throw on an elicitation, which is what an MRTR-capable client with nobody to ask does.
+    /// </param>
+    /// <param name="clientProtocolVersion">
+    /// Protocol revision the client declares. Set it to an older revision to get a client whose
+    /// <c>IsMrtrSupported</c> is false — the real degraded case, rather than a fabricated capability.
+    /// </param>
     /// <returns>A started harness.</returns>
     public static async Task<ToolHarness> StartAsync(
         IJobRepository? jobs = null,
         ICandidateRepository? candidates = null,
         TalentOptions? options = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? elicitationHandler = null,
+        string? clientProtocolVersion = null)
     {
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
+
+        // Opt-in server-side logging. Needed because the SDK strips the message from any exception that
+        // is not an McpException, so a tool failing for an unexpected reason arrives as
+        // "An error occurred invoking '<tool>'." and nothing else. HARNESS_LOG=1 shows what it was.
+        if (Environment.GetEnvironmentVariable("HARNESS_LOG") == "1")
+        {
+            builder.Logging.AddConsole();
+        }
 
         var codec = new SignedHandleCodec(new HandleCodec(SigningKey, timeProvider), ownsCodec: true);
 
@@ -89,7 +109,19 @@ internal sealed class ToolHarness : IAsyncDisposable
             serverInput: clientToServer.Writer.AsStream(),
             serverOutput: serverToClient.Reader.AsStream());
 
-        var client = await McpClient.CreateAsync(transport).ConfigureAwait(false);
+        var clientOptions = new McpClientOptions();
+
+        if (elicitationHandler is not null)
+        {
+            clientOptions.Handlers.ElicitationHandler = elicitationHandler;
+        }
+
+        if (clientProtocolVersion is not null)
+        {
+            clientOptions.ProtocolVersion = clientProtocolVersion;
+        }
+
+        var client = await McpClient.CreateAsync(transport, clientOptions).ConfigureAwait(false);
 
         return new ToolHarness(host, client, codec);
     }
@@ -137,6 +169,25 @@ internal sealed class ToolHarness : IAsyncDisposable
         var result = await this.CallAsync(Mcp.ToolNames.SearchJobs, arguments).ConfigureAwait(false);
 
         return StructuredOf(result);
+    }
+
+    /// <summary>
+    /// Sends a hand-built <c>tools/call</c>, bypassing the client's own MRTR loop.
+    /// <para>
+    /// Needed because the SDK client drives the confirmation round-trip itself: it intercepts an
+    /// <c>input_required</c> result, calls the elicitation handler and retries, so a test can never
+    /// see the first leg or control the second. Building the retry by hand is the only way to assert
+    /// what happens when a client sends a confirmation with arguments that disagree with the signed
+    /// state.
+    /// </para>
+    /// </summary>
+    /// <param name="parameters">The full call parameters, including inputResponses and requestState.</param>
+    /// <returns>The result.</returns>
+    public async Task<CallToolResult> CallRawAsync(CallToolRequestParams parameters)
+    {
+        return await this.Client
+            .SendRequestAsync<CallToolRequestParams, CallToolResult>("tools/call", parameters)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Returns a successful call's structured content, failing the call if it errored.</summary>

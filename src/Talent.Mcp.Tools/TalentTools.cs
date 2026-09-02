@@ -35,6 +35,7 @@ public static class TalentTools
             .WithTools<GetJobTool>()
             .WithTools<ExtractSkillsTool>()
             .WithTools<ScoreCandidateFitTool>()
+            .WithTools<RejectCandidateTool>()
             .WithRequestFilters(static filters => filters.AddListToolsFilter(static next =>
                 async (request, cancellationToken) =>
                 {
@@ -89,6 +90,7 @@ public static class TalentTools
         services.AddScoped<SearchJobsUseCase>();
         services.AddScoped<GetJobUseCase>();
         services.AddScoped<ScoreCandidateFitUseCase>();
+        services.AddScoped<RejectCandidateUseCase>();
         services.AddSingleton<ExtractSkillsUseCase>();
     }
 }

@@ -21,6 +21,7 @@ public sealed class ToolSurfaceTests
         Mcp.ToolNames.GetJob,
         Mcp.ToolNames.ExtractSkills,
         Mcp.ToolNames.ScoreCandidateFit,
+        Mcp.ToolNames.RejectCandidate,
     ];
 
     [Fact]
@@ -107,7 +108,7 @@ public sealed class ToolSurfaceTests
             var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
 
             Assert.All(
-                new[] { "search", "getJob", "extract", "score", "cancellationToken" },
+                new[] { "search", "getJob", "extract", "score", "reject", "handles", "options", "context", "cancellationToken" },
                 injected => Assert.False(
                     properties.TryGetProperty(injected, out _),
                     $"{tool.Name} exposes the injected '{injected}' as a tool argument."));

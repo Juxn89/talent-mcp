@@ -5,7 +5,8 @@
 | **Date** | 1 Sep 2026 |
 | **Phase** | F2 (MCP tools) |
 | **Method** | A real MCP server and a real MCP client over paired in-memory pipes, plus a reflection dump of the pinned 2.2.0 assemblies from the local NuGet cache |
-| **Why** | Four assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
+| **Why** | Eight assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
+| **Updated** | 2 Sep 2026 — findings 5 to 8, from building `reject_candidate` and its MRTR exchange |
 
 Everything below was observed, not read from release notes. The probe was a throwaway test that printed
 `tools/list` and four tool calls verbatim; the assertions it produced now live in
@@ -103,6 +104,125 @@ are.
 **Fixed** by dropping the planned `McpErrorCodes` constant class rather than writing one nothing can
 use, and correcting `AGENTS.md`. Tools throw `McpException` with an actionable message; tests assert
 `IsError` and the message text.
+
+---
+
+## 5. `IsMrtrSupported` is **not** a sufficient guard for asking the user
+
+**Claimed** (the plan, and `AGENTS.md`'s tool table): `reject_candidate` must handle *"the degraded path
+when `server.IsMrtrSupported` is `false`"*.
+
+**Observed.** That condition is not the one that matters. A client declaring protocol `2025-11-25` has
+`IsMrtrSupported` **true**, and raising an elicitation for it fails inside the SDK with:
+
+```
+System.InvalidOperationException: Client does not support elicitation requests.
+```
+
+which reaches the caller as `isError: true` carrying `"An error occurred invoking 'reject_candidate'."`
+— the message stripped, no indication of what to do. Guarding on `IsMrtrSupported` alone therefore
+produces the worst of both worlds: the degraded path exists in the code and never runs, and the client
+that needed it gets an opaque failure.
+
+The two properties answer different questions:
+
+| Property | Question it answers |
+|---|---|
+| `McpServer.IsMrtrSupported` | Is the MRTR mechanism available on this connection? |
+| `McpServer.ClientCapabilities?.Elicitation` | Is there anyone at the other end who can be asked? |
+
+A confirmation needs **both**. `RejectCandidateTool.CanAskTheUser` checks both, and a test drives a
+`2025-11-25` client to prove the degraded path is reached rather than merely present.
+
+---
+
+## 6. The SDK client drives the MRTR round-trip itself
+
+Not an error, but it changes how MRTR can be tested and is worth knowing before writing a conformance
+assertion.
+
+Register `McpClientHandlers.ElicitationHandler` and the client does the whole exchange: it intercepts
+the `input_required` result, calls the handler, and re-sends `tools/call` with `inputResponses` and the
+server's `requestState`. `CallToolAsync` returns only the final result, with
+`"resultType": "complete"`. So:
+
+- A tool test **cannot observe the first leg** through the SDK client, and cannot make the second leg
+  disagree with the first. Tests that need to — for instance, proving a client cannot swap the rejection
+  reason between confirming and writing — build the retry by hand
+  (`ToolHarness.CallRawAsync`), minting the `requestState` with the same codec the server uses.
+- A conformance test that wants to see the raw `input_required` result has to go around the SDK client,
+  over HTTP.
+
+One asymmetry the server cannot do anything about: a **2026-07-28 client with no elicitation handler
+still declares the elicitation capability**, so `CanAskTheUser` is true, the server asks, and the client
+then throws locally with *"Server sent an elicitation input request, but no ElicitationHandler is
+registered."* From the server's side that client is indistinguishable from one that can ask.
+
+---
+
+## 7. Only `McpException` keeps its message; everything else is stripped
+
+**Observed.** A thrown `McpException` reaches the client as `isError: true` with the full text, prefixed
+`"An error occurred invoking '<tool>': "`. Any other exception — including the SDK's own
+argument-binding failure for a missing required parameter — becomes `"An error occurred invoking
+'<tool>'."` and nothing more.
+
+**Why it is worth writing down.** It made a test pass for the wrong reason. A hand-built MRTR retry that
+omitted the required `candidateId` argument was rejected by the SDK binder *before the tool body ran*,
+so a test asserting only `Assert.True(result.IsError)` on an expired confirmation went green without
+ever reaching the expiry check. Both hand-built retries now send the argument and assert on the message
+text. The general rule: **for a negative test, assert the message, not just the flag** — `isError` alone
+cannot tell "refused for the reason under test" from "never got that far".
+
+---
+
+## 8. `McpServer.ClientCapabilities` is **null on every request** under stateless HTTP
+
+The most consequential finding of the increment, and one only a live host could produce.
+
+**Observed.** With `reject_candidate` gated on `ClientCapabilities?.Elicitation` (the fix from finding
+5), the in-memory stream transport behaved perfectly and the **HTTP host took the degraded path for
+every single call** — including calls whose body declared
+`_meta/io.modelcontextprotocol/clientCapabilities: {"elicitation": {}}`. A temporary diagnostic in the
+error message said it plainly:
+
+```
+DIAG mrtr=True caps=null
+```
+
+`IsMrtrSupported` true, `ClientCapabilities` null, capabilities declared in the body and ignored.
+
+**Why.** `ClientCapabilities` is the pre-2026 session-level notion, populated by the `initialize`
+handshake — which SEP-2575 removed. Under `SessionMode.Stateless` there is no session to hold it, so
+the property is never set, and the client's self-description arrives as **per-request metadata**
+instead. `AGENTS.md` already lists `McpMetaKeys.clientCapabilities` among the six constant groups for
+exactly this reason; what was missing was code that read it.
+
+**Why it mattered so much.** The failure was invisible from the tool tests: the stream transport does
+populate the property, so 135 tests passed while the shipped HTTP host had MRTR permanently disabled.
+That is the divergence ADR-0004 exists to prevent, arriving through the SDK rather than through the
+tool surface — a reminder that "both hosts share the tool code" does not mean both hosts behave
+identically.
+
+**Fixed** by `Talent.Mcp.Toolkit.McpClientCapabilityReader`, which consults the session property when
+the transport populates it and the request's own `_meta` when it does not. It lives in the toolkit
+because it is pure protocol plumbing with no recruitment concept in it — the same reason
+`McpTraceContext` is there.
+
+**Verified end to end over HTTP**, against real Postgres:
+
+| Request | Result |
+|---|---|
+| No capabilities declared | `isError`, message naming `confirmed: true` and the reason requirement |
+| No capabilities + `confirmed: true` | written, `confirmation: "ClientAsserted"` |
+| `{"elicitation":{}}` declared | `resultType: "input_required"` with `requestState` and an `inputRequests.confirm_rejection` elicitation |
+| Retry with `inputResponses` **and a different `reason` argument** | `resultType: "complete"`, and the row in Postgres carries the **original** reason |
+
+That last row is the invariant the whole design rests on: what the user approved is what got written.
+
+**Still a gap, and named as one.** The `_meta` branch is covered by unit tests over the reader, but no
+automated test exercises it through the HTTP host — the run above was manual. The conformance suite in
+the next increment is where that belongs, because it is the suite that already speaks raw HTTP.
 
 ---
 

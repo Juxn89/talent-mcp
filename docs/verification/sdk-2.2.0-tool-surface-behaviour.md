@@ -5,8 +5,8 @@
 | **Date** | 1 Sep 2026 |
 | **Phase** | F2 (MCP tools) |
 | **Method** | A real MCP server and a real MCP client over paired in-memory pipes, plus a reflection dump of the pinned 2.2.0 assemblies from the local NuGet cache |
-| **Why** | Eight assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
-| **Updated** | 2 Sep 2026 — findings 5 to 8, from building `reject_candidate` and its MRTR exchange |
+| **Why** | Ten assumptions the plan, `AGENTS.md` or ADR-0002 stated turned out to be wrong. Each is corrected at its source and pinned by a test |
+| **Updated** | 2 Sep 2026 (twice) — findings 5 to 8 from `reject_candidate`/MRTR; findings 9 to 10 from `bulk_score_shortlist`/Tasks |
 
 Everything below was observed, not read from release notes. The probe was a throwaway test that printed
 `tools/list` and four tool calls verbatim; the assertions it produced now live in
@@ -223,6 +223,86 @@ That last row is the invariant the whole design rests on: what the user approved
 **Still a gap, and named as one.** The `_meta` branch is covered by unit tests over the reader, but no
 automated test exercises it through the HTTP host — the run above was manual. The conformance suite in
 the next increment is where that belongs, because it is the suite that already speaks raw HTTP.
+
+---
+
+## 9. Task execution mode is declared per call, in `_meta`, the same as elicitation
+
+**Method.** A raw wire capture (a logging `Stream` wrapped around the client's outgoing pipe) rather
+than documentation, since neither the SDK's XML docs nor its `McpTasksOptions.ExecutionModeSelector`
+remarks say what a client actually sends. Captured request:
+
+```json
+{"method":"tools/call","params":{"name":"slow_add","arguments":{"a":10,"b":20},
+ "_meta":{"io.modelcontextprotocol/clientCapabilities":
+   {"extensions":{"io.modelcontextprotocol/tasks":{}}}, ...}}}
+```
+
+So task participation is **per-request**, declared the identical way elicitation is (finding 5): a
+capability nested under `_meta/clientCapabilities/extensions`, not a session-level flag. That is
+good news given finding 8 — the same `McpClientCapabilityReader`-shaped reasoning applies, and in fact
+the SDK's own `ExecutionModeSelector` handles it internally; nothing in this project's code reads that
+`_meta` key directly. What *is* project code is `TalentTools.SelectExecutionMode`, which classifies by
+tool name (`context.Params?.Name`) to require the extension only for `bulk_score_shortlist` and keep
+the other five `Synchronous`.
+
+A plain `CallToolAsync` against a `Required`-mode tool throws
+`ModelContextProtocol.MissingRequiredClientCapabilityException` **client-side**, corresponding to
+`McpErrorCode.MissingRequiredClientCapability = -32021` on the wire — before the tool body ever runs.
+Verified over real HTTP: `{"error":{"code":-32021,"message":"The request requires the
+'io.modelcontextprotocol/tasks' client extension capability.", ...}}`.
+
+---
+
+## 10. `tasks/get` needs `Mcp-Name`, but the value is the **task id**, not a tool name
+
+Pitfall #19/21 (`AGENTS.md`) already documents that a raw `tools/call` needs `Mcp-Method: tools/call`
+and `Mcp-Name: <tool name>`. `tasks/get` needs the header pair too, and it was not obvious what
+"name" means for a request that has no tool name at all — its body carries a `taskId`, not a `name`.
+
+**Observed**, over real HTTP against a real task: sending `Mcp-Name: bulk_score_shortlist` (a real tool
+name) failed with
+
+```
+Header mismatch: Mcp-Name header value 'bulk_score_shortlist' does not match body value
+'871be5f5e9604baa94e702b7bfa49ef0'.
+```
+
+The error names the expected value. **`Mcp-Name` must equal whatever the body's own identifying field
+is for that method** — `name` for `tools/call`, `taskId` for `tasks/get` (and, by the same logic,
+`cancelTask`'s `taskId`). The header check is generic across methods, not `tools/call`-specific. Only
+matters for a hand-rolled request; the SDK client sets it correctly.
+
+---
+
+## A tool throwing `McpException` under Tasks completes, it does not fail
+
+**Observed**, from the test suite: `bulk_score_shortlist` throwing `McpException` for a missing job, an
+empty shortlist, or a too-large one all landed the task in `McpTaskStatus.Completed`, never `Failed`.
+`CompletedTaskResult.Result` is the ordinary `CallToolResult` JSON — `isError: true`, the message as
+text — exactly the shape a synchronous tool error already has (see the error-code finding above).
+`FailedTaskResult` is reserved for an exception that escapes as something other than `McpException`,
+consistent with the non-task rule that only `McpException` keeps its message on the wire. A task-mode
+test asserting `FailedTaskResult` on a validation error fails for the wrong reason if this is missed —
+learned by writing exactly that test first and watching it fail with
+`Expected: FailedTaskResult, Actual: CompletedTaskResult`.
+
+---
+
+## Progress notifications during a task: reasoned, not measured, for the HTTP host
+
+`context.Server.NotifyProgressAsync` **does** deliver `notifications/progress` to a client mid-task —
+confirmed over the in-memory stream transport: three `Report()` calls from inside a backgrounded tool
+handler, three `[CLIENT] progress notification` lines received, in order, before the task completed.
+
+Whether that holds for the Streamable HTTP host under `SessionMode.Stateless` was **not** measured the
+same way, and is not claimed as verified. The reasoning: `CallToolAsTaskAsync`'s response returns in
+well under 100ms — the SDK does not hold the HTTP request open across the tool's background execution
+— and `GET /mcp` answers `405` under `Stateless` (asserted since F2 increment 1), so there is no
+channel left open on which a later push could arrive between the task-creation response and the
+client's next `tasks/get` poll. `bulk_score_shortlist`'s progress bridge is written defensively either
+way (fire-and-forget, exceptions swallowed — see its doc comment), so an unreachable client costs
+nothing. Exhaustively proving the negative over real HTTP is left to the conformance suite.
 
 ---
 

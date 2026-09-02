@@ -14,15 +14,8 @@ using Xunit;
 /// </summary>
 public sealed class ToolSurfaceTests
 {
-    /// <summary>The tools registered so far. Grows to all six as F2 lands the remaining two.</summary>
-    private static readonly string[] Registered =
-    [
-        Mcp.ToolNames.SearchJobs,
-        Mcp.ToolNames.GetJob,
-        Mcp.ToolNames.ExtractSkills,
-        Mcp.ToolNames.ScoreCandidateFit,
-        Mcp.ToolNames.RejectCandidate,
-    ];
+    /// <summary>All six tools, in the canonical order <c>Mcp.ToolNames.All</c> declares.</summary>
+    private static readonly string[] Registered = Mcp.ToolNames.All;
 
     [Fact]
     public async Task Every_registered_tool_is_listed_by_name()
@@ -108,7 +101,7 @@ public sealed class ToolSurfaceTests
             var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
 
             Assert.All(
-                new[] { "search", "getJob", "extract", "score", "reject", "handles", "options", "context", "cancellationToken" },
+                new[] { "search", "getJob", "extract", "score", "reject", "bulkScore", "handles", "options", "context", "cancellationToken" },
                 injected => Assert.False(
                     properties.TryGetProperty(injected, out _),
                     $"{tool.Name} exposes the injected '{injected}' as a tool argument."));

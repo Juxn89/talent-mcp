@@ -8,6 +8,7 @@ using Talent.Application.Ports;
 using Talent.Infrastructure.Handles;
 using Talent.Infrastructure.Persistence;
 using Talent.Mcp.Toolkit;
+using Talent.Mcp.Toolkit.Tasks;
 
 /// <summary>
 /// Composition root for the adapters: EF Core, the repositories, the handle codec and the options the
@@ -65,6 +66,40 @@ public static class TalentInfrastructureServiceCollectionExtensions
             new SignedHandleCodec(sp.GetRequiredService<HandleCodec>(), ownsCodec: false));
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds and prepares the <c>bulk_score_shortlist</c> task store: the schema is ensured, but the
+    /// cross-node listener is not started.
+    /// <para>
+    /// Separate from <see cref="AddTalentInfrastructure"/> because <c>WithTasks(...)</c> needs an already
+    /// constructed <see cref="PostgresMcpTaskStore"/> instance at MCP-builder-configuration time — before
+    /// <c>IServiceProvider</c> exists to resolve one from. So the host calls this first, registers the
+    /// returned instance itself, and only starts it (<c>StartAsync</c>) after the service provider is
+    /// built. Per ADR-0003, that split is intentional: starting the listener is a lifecycle decision for
+    /// whoever owns the process, not a side effect of construction.
+    /// </para>
+    /// </summary>
+    /// <param name="configuration">Configuration to read the connection string from.</param>
+    /// <param name="options">Store tunables, or <see langword="null"/> for the store's own defaults.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A store whose schema exists in Postgres, not yet listening.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="configuration"/> was <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">No connection string was configured.</exception>
+    public static async Task<PostgresMcpTaskStore> CreateAndPrepareTaskStoreAsync(
+        IConfiguration configuration,
+        PostgresMcpTaskStoreOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var connectionString = ReadConnectionString(configuration);
+
+        await PostgresTaskStoreSchema
+            .EnsureCreatedAsync(connectionString, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        return new PostgresMcpTaskStore(connectionString, options);
     }
 
     private static TalentOptions BindOptions(IConfiguration configuration)

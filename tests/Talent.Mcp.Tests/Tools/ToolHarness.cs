@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using Talent.Application.Configuration;
 using Talent.Application.Ports;
@@ -100,7 +101,7 @@ internal sealed class ToolHarness : IAsyncDisposable
             .WithStreamServerTransport(
                 clientToServer.Reader.AsStream(),
                 serverToClient.Writer.AsStream())
-            .AddTalentTools();
+            .AddTalentTools(new InMemoryMcpTaskStore());
 
         var host = builder.Build();
         await host.StartAsync().ConfigureAwait(false);
@@ -188,6 +189,56 @@ internal sealed class ToolHarness : IAsyncDisposable
         return await this.Client
             .SendRequestAsync<CallToolRequestParams, CallToolResult>("tools/call", parameters)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Calls a tool as an MCP task and runs it to completion.
+    /// <para>
+    /// <c>CallToolAsTaskAsync</c> is what makes the request declare the Tasks extension — the SDK client
+    /// sets <c>_meta/clientCapabilities/extensions/io.modelcontextprotocol/tasks</c> on the outgoing
+    /// request itself, matching what a real task-capable client sends. Polling stops as soon as the task
+    /// leaves <see cref="McpTaskStatus.Working"/>, so a test that expects a terminal state other than
+    /// <see cref="McpTaskStatus.Completed"/> reads <see cref="GetTaskResult.Status"/> off the return
+    /// value rather than assuming success.
+    /// </para>
+    /// </summary>
+    /// <param name="toolName">Wire name of the tool.</param>
+    /// <param name="arguments">Arguments to send.</param>
+    /// <returns>The task's terminal state.</returns>
+    /// <exception cref="InvalidOperationException">The call was not accepted as a task at all.</exception>
+    public async Task<GetTaskResult> RunAsTaskToCompletionAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null)
+    {
+        var jsonArguments = (arguments ?? new Dictionary<string, object?>())
+            .ToDictionary(
+                static kvp => kvp.Key,
+                static kvp => JsonSerializer.SerializeToElement(kvp.Value),
+                StringComparer.Ordinal);
+
+        var created = await this.Client
+            .CallToolAsTaskAsync(new CallToolRequestParams { Name = toolName, Arguments = jsonArguments })
+            .ConfigureAwait(false);
+
+        if (!created.IsTask)
+        {
+            throw new InvalidOperationException(
+                $"{toolName} did not run as a task. This harness only calls task-required tools this way.");
+        }
+
+        var taskId = created.TaskCreated!.TaskId;
+
+        while (true)
+        {
+            var status = await this.Client.GetTaskAsync(taskId).ConfigureAwait(false);
+
+            if (status.Status is not McpTaskStatus.Working)
+            {
+                return status;
+            }
+
+            await Task.Delay(20).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Returns a successful call's structured content, failing the call if it errored.</summary>
@@ -351,6 +402,22 @@ internal static class ToolTestData
         SeniorityLevel.Senior,
         new Location("Madrid", "ES"),
         willingToRelocate: false);
+
+    /// <summary>
+    /// <paramref name="count"/> candidates, half overlapping the Madrid posting's skills and half not —
+    /// so a shortlist scoring run has both matches and near-misses to sort between.
+    /// </summary>
+    public static IReadOnlyList<Candidate> ManyCandidates(int count) =>
+        Enumerable.Range(1, count)
+            .Select(i => new Candidate(
+                Guid.Parse($"55555555-5555-5555-5555-{i:D12}"),
+                $"Candidate {i:D2}",
+                i % 2 == 0 ? ["csharp", "postgresql"] : ["java"],
+                i,
+                SeniorityLevel.Mid,
+                new Location("Madrid", "ES"),
+                willingToRelocate: false))
+            .ToArray();
 
     /// <summary>Twelve postings with distinct sortable titles, for pagination tests.</summary>
     public static IReadOnlyList<Job> Many(int count) =>

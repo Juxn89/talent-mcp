@@ -18,5 +18,7 @@
     <!-- The hosting/DI package: brings ModelContextProtocol.Core for the attributes, and the
          generic WithTools<T>() that ADR-0002 makes mandatory. Not the AspNetCore one. -->
     <PackageReference Include="ModelContextProtocol" />
+    <!-- bulk_score_shortlist runs on the Tasks extension; WithTasks and IMcpTaskStore live here. -->
+    <PackageReference Include="ModelContextProtocol.Extensions.Tasks" />
   </ItemGroup>
 </Project>

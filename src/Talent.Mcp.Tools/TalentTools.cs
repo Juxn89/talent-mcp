@@ -1,7 +1,11 @@
 namespace Talent.Mcp.Tools;
 
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Talent.Application.Ports;
+using Talent.Application.Services;
 using Talent.Application.UseCases;
 using Talent.Mcp.Toolkit.Caching;
 using Talent.Mcp.Tools.Constants;
@@ -19,11 +23,18 @@ public static class TalentTools
 {
     /// <summary>Registers the tool types, the use cases behind them and the list-response cache policy.</summary>
     /// <param name="builder">The MCP server builder.</param>
+    /// <param name="taskStore">
+    /// The task store backing <c>bulk_score_shortlist</c>. Constructed and started by the host, not
+    /// here: it needs a connection string from configuration, which only the host's composition root
+    /// reads, and starting its cross-node listener (ADR-0003) is a lifecycle decision that belongs with
+    /// whoever owns the process, not with tool registration.
+    /// </param>
     /// <returns>The same builder, for chaining.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> was <see langword="null"/>.</exception>
-    public static IMcpServerBuilder AddTalentTools(this IMcpServerBuilder builder)
+    /// <exception cref="ArgumentNullException">A required argument was <see langword="null"/>.</exception>
+    public static IMcpServerBuilder AddTalentTools(this IMcpServerBuilder builder, IMcpTaskStore taskStore)
     {
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(taskStore);
 
         AddUseCases(builder.Services);
 
@@ -36,6 +47,8 @@ public static class TalentTools
             .WithTools<ExtractSkillsTool>()
             .WithTools<ScoreCandidateFitTool>()
             .WithTools<RejectCandidateTool>()
+            .WithTools<BulkScoreShortlistTool>()
+            .WithTasks(taskStore, options => options.ExecutionModeSelector = SelectExecutionMode)
             .WithRequestFilters(static filters => filters.AddListToolsFilter(static next =>
                 async (request, cancellationToken) =>
                 {
@@ -47,6 +60,30 @@ public static class TalentTools
                     return CachePolicies.ToolsList.ApplyTo(result);
                 }));
     }
+
+    /// <summary>
+    /// Chooses which tools run as MCP tasks.
+    /// <para>
+    /// Only <c>bulk_score_shortlist</c> requires <see cref="McpTaskExecutionMode.Required"/> — it is the
+    /// one operation in the surface sized to actually take a while (up to
+    /// <see cref="Talent.Application.Configuration.TalentOptions.MaxShortlistSize"/> candidates), and
+    /// requiring the client to opt in is what makes the demonstration mean something. Every other tool
+    /// is <see cref="McpTaskExecutionMode.Synchronous"/>: they are fast, and a client that asked one of
+    /// them to run as a task and then had to poll for a result nobody was waiting on would be worse off,
+    /// not better.
+    /// </para>
+    /// <para>
+    /// The default the SDK would otherwise apply — <c>Optional</c> for every tool — is deliberately not
+    /// used here: it would let a client run <c>extract_skills</c> as a task for no benefit, which is
+    /// surface area this project does not need to support or test.
+    /// </para>
+    /// </summary>
+    /// <param name="context">The call being classified.</param>
+    /// <returns>The execution mode for this call.</returns>
+    private static McpTaskExecutionMode SelectExecutionMode(RequestContext<CallToolRequestParams> context) =>
+        context.Params?.Name == Mcp.ToolNames.BulkScoreShortlist
+            ? McpTaskExecutionMode.Required
+            : McpTaskExecutionMode.Synchronous;
 
     /// <summary>
     /// Puts <c>tools/list</c> into the canonical order of <see cref="Mcp.ToolNames.All"/>.
@@ -92,5 +129,11 @@ public static class TalentTools
         services.AddScoped<ScoreCandidateFitUseCase>();
         services.AddScoped<RejectCandidateUseCase>();
         services.AddSingleton<ExtractSkillsUseCase>();
+
+        // DomainShortlistScorer needs no EF Core — it composes IJobRepository, ICandidateRepository and
+        // the pure domain scorer, all of which Application already has — so its binding lives here
+        // rather than in Talent.Infrastructure's composition root.
+        services.AddScoped<IShortlistScorer, DomainShortlistScorer>();
+        services.AddScoped<BulkScoreShortlistUseCase>();
     }
 }

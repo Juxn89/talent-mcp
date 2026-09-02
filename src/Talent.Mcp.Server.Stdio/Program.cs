@@ -20,9 +20,27 @@ builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogL
 
 builder.Services.AddTalentInfrastructure(builder.Configuration);
 
+// Built and schema-prepared before the service provider exists — WithTasks needs a concrete instance,
+// not a DI factory — and started only after it. See ADR-0003 and the matching comment in the HTTP
+// host's Program.cs.
+var taskStore = await TalentInfrastructureServiceCollectionExtensions
+    .CreateAndPrepareTaskStoreAsync(builder.Configuration)
+    .ConfigureAwait(false);
+builder.Services.AddSingleton(taskStore);
+
 builder.Services
     .AddMcpServer(options => options.ServerInfo = TalentServerInfo.Value)
     .WithStdioServerTransport()
-    .AddTalentTools();
+    .AddTalentTools(taskStore);
 
-await builder.Build().RunAsync().ConfigureAwait(false);
+var host = builder.Build();
+await taskStore.StartAsync().ConfigureAwait(false);
+
+try
+{
+    await host.RunAsync().ConfigureAwait(false);
+}
+finally
+{
+    await taskStore.DisposeAsync().ConfigureAwait(false);
+}

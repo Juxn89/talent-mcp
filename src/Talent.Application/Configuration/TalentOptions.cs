@@ -37,18 +37,12 @@ public sealed class TalentOptions
     public TimeSpan PaginationHandleTimeToLive { get; init; } = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// How long a shortlist handle stays valid. Longer than pagination because a bulk scoring run is
-    /// expected to outlive a single request.
-    /// </summary>
-    public TimeSpan ShortlistHandleTimeToLive { get; init; } = TimeSpan.FromHours(1);
-
-    /// <summary>
     /// How long an MRTR confirmation stays valid — the window between the server asking "really reject
     /// this candidate?" and the client coming back with the answer.
     /// <para>
-    /// The shortest of the three, and deliberately so. It brackets a human decision, and a confirmation
-    /// that outlives the conversation it belonged to can be replayed against a destructive operation.
-    /// Five minutes is longer than anyone needs to answer one question.
+    /// The shorter of the two handle lifetimes, and deliberately so. It brackets a human decision, and
+    /// a confirmation that outlives the conversation it belonged to can be replayed against a
+    /// destructive operation. Five minutes is longer than anyone needs to answer one question.
     /// </para>
     /// </summary>
     public TimeSpan ConfirmationHandleTimeToLive { get; init; } = TimeSpan.FromMinutes(5);
@@ -87,12 +81,6 @@ public sealed class TalentOptions
         if (this.PaginationHandleTimeToLive <= TimeSpan.Zero)
         {
             error = $"{nameof(this.PaginationHandleTimeToLive)} must be positive.";
-            return false;
-        }
-
-        if (this.ShortlistHandleTimeToLive <= TimeSpan.Zero)
-        {
-            error = $"{nameof(this.ShortlistHandleTimeToLive)} must be positive.";
             return false;
         }
 

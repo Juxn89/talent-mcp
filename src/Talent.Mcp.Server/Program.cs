@@ -1,12 +1,16 @@
 // Streamable HTTP host for the recruitment tool surface.
 //
-// Two decisions are visible at the call site on purpose, because they are the two that a reader of
-// this file most needs to know and the two that are cheapest to get wrong:
+// Three decisions are visible at the call site on purpose, because they are the ones a reader of this
+// file most needs to know and the ones cheapest to get wrong:
 //
 //   * SessionMode.Stateless      — ADR-0001. The 2026-07-28 revision removed sessions outright, and
 //                                  state travels in signed handles passed as ordinary tool arguments.
 //   * AddTalentTools()           — ADR-0002/ADR-0004. Explicit WithTools<T>() per type, never an
 //                                  assembly scan, and the same registration both hosts use.
+//   * The task store lifecycle  — ADR-0003. Built and schema-prepared before the service provider
+//                                  exists (WithTasks needs a concrete instance, not a DI factory), and
+//                                  started only after it — starting the cross-node listener is this
+//                                  host's decision, not a side effect of construction.
 using ModelContextProtocol.AspNetCore;
 using Talent.Infrastructure.DependencyInjection;
 using Talent.Mcp.Tools;
@@ -17,12 +21,22 @@ var builder = WebApplication.CreateBuilder(args);
 // startup when the connection string, the handle signing key or the tunables are missing or wrong.
 builder.Services.AddTalentInfrastructure(builder.Configuration);
 
+var taskStore = await TalentInfrastructureServiceCollectionExtensions
+    .CreateAndPrepareTaskStoreAsync(builder.Configuration)
+    .ConfigureAwait(false);
+builder.Services.AddSingleton(taskStore);
+
 builder.Services
     .AddMcpServer(options => options.ServerInfo = TalentServerInfo.Value)
     .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
-    .AddTalentTools();
+    .AddTalentTools(taskStore);
 
 var app = builder.Build();
+
+// Start listening for cross-node input-response and bulk-shortlist notifications only now — after the
+// app exists, before it starts accepting requests. A store that has not started still persists task
+// state correctly (ADR-0003); it just has higher latency recovering from a missed notification.
+await taskStore.StartAsync().ConfigureAwait(false);
 
 // The MCP endpoint. GET and DELETE answer 405 under Stateless — there is no stream to resume and no
 // session to terminate, and the conformance suite asserts exactly that.
@@ -32,4 +46,14 @@ app.MapMcp("/mcp");
 // unreachable makes the orchestrator restart a process that would have recovered on its own.
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-await app.RunAsync().ConfigureAwait(false);
+try
+{
+    await app.RunAsync().ConfigureAwait(false);
+}
+finally
+{
+    // Disposed explicitly rather than left to the container: AddSingleton(instance) registers an
+    // externally-owned object, and this repo does not rely on undocumented framework disposal
+    // behaviour for one — see PostgresMcpTaskStore's own "StartAsync is explicit" reasoning (ADR-0003).
+    await taskStore.DisposeAsync().ConfigureAwait(false);
+}

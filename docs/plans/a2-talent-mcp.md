@@ -276,7 +276,14 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
 - Realm versionado en `deploy/keycloak/realm.json`, con `code_challenge_methods_supported: ["S256"]`
   declarado — si falta, el OAuth del SDK falla.
 - Servidor MCP como resource server, **scopes por tool** (lectura vs escritura vs destructiva).
-- Validación de `iss` (RFC 9207) y credenciales indexadas por issuer.
+- Validación de `iss` (RFC 9207) — hecho, ejercitado por el flujo real authorization_code + PKCE en
+  `AuthorizationCodeE2ETests`, que captura el `iss` de la redirección y confía en que el SDK lo valide.
+  **"Credenciales indexadas por issuer" queda fuera de alcance, no pendiente**: ese requisito del spec
+  (sección "Authorization Server Binding") es para un cliente que persiste credenciales OAuth entre
+  ejecuciones y no debe reutilizarlas si cambia el authorization server. Este proyecto no publica un
+  cliente así — la tabla de "Published artifacts" de AGENTS.md no incluye uno, y `Talent.Mcp.E2E` (el
+  único "cliente" que existe) mintea un token por test y no persiste nada. No hay artefacto al que
+  aplicarle el requisito. Detalle en `deploy/keycloak/README.md`.
 - Usar `ClientOAuthOptions.AuthorizationCallbackHandler` en el cliente demo (el delegate viejo emite
   `MCP9007`).
 - **ADR-0005, resuelto distinto de lo asumido.** DCR sigue deprecado, pero CIMD tampoco se adopta: el

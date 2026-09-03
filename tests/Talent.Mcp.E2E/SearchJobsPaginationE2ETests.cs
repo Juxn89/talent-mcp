@@ -26,7 +26,8 @@ public sealed class SearchJobsPaginationE2ETests
     [Fact]
     public async Task Paginating_by_handle_covers_every_seeded_job_exactly_once()
     {
-        await using var client = await this.fixture.CreateClientAsync();
+        var token = await this.fixture.MintTokenAsync("openid talent.jobs.read");
+        await using var client = await this.fixture.CreateClientAsync(token);
 
         var seenIds = new List<string>();
         string? pageHandle = null;
@@ -65,13 +66,14 @@ public sealed class SearchJobsPaginationE2ETests
         // Under SessionMode.Stateless there is no session tying a handle to the connection that
         // requested it — a retry landing on a different node in production must still work. Two
         // independent client connections is how that gets exercised here.
-        await using var first = await this.fixture.CreateClientAsync();
+        var token = await this.fixture.MintTokenAsync("openid talent.jobs.read");
+        await using var first = await this.fixture.CreateClientAsync(token);
 
         var firstPage = await first.CallToolAsync("search_jobs", new Dictionary<string, object?>());
         var firstHandle = firstPage.StructuredContent!.Value.GetProperty("nextPageHandle").GetString();
         Assert.NotNull(firstHandle);
 
-        await using var second = await this.fixture.CreateClientAsync();
+        await using var second = await this.fixture.CreateClientAsync(token);
         var secondPage = await second
             .CallToolAsync("search_jobs", new Dictionary<string, object?> { ["pageHandle"] = firstHandle });
 
@@ -82,7 +84,8 @@ public sealed class SearchJobsPaginationE2ETests
     [Fact]
     public async Task A_page_beyond_the_last_one_is_refused_not_returned_empty()
     {
-        await using var client = await this.fixture.CreateClientAsync();
+        var token = await this.fixture.MintTokenAsync("openid talent.jobs.read");
+        await using var client = await this.fixture.CreateClientAsync(token);
 
         string? pageHandle = null;
         do

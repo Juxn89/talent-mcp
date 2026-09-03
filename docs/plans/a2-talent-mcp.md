@@ -279,7 +279,12 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
 - Validación de `iss` (RFC 9207) y credenciales indexadas por issuer.
 - Usar `ClientOAuthOptions.AuthorizationCallbackHandler` en el cliente demo (el delegate viejo emite
   `MCP9007`).
-- ADR sobre Client ID Metadata Documents vs DCR, ahora que DCR está deprecado.
+- **ADR-0005, resuelto distinto de lo asumido.** DCR sigue deprecado, pero CIMD tampoco se adopta: el
+  soporte de Keycloak es experimental desde 26.6.0 (abril 2026), detrás de `--features=cimd`, con un
+  bug abierto (keycloak/keycloak#49730) que lo deja inutilizable para clientes tipo MCP. La decisión es
+  **pre-registro** (clientes estáticos en el realm, ya presentes desde F0) — que además es la opción
+  que el propio spec prioriza primero cuando cliente y servidor ya tienen una relación previa. Revisar
+  cuando Keycloak promueva CIMD a preview (roadmap: 26.8.0, fin de sept. 2026) o el bug se cierre.
 - Extender el E2E al flujo OAuth completo: obtener token contra Keycloak, llamar con y sin el scope
   requerido, y comprobar que la tool destructiva se deniega sin él.
 

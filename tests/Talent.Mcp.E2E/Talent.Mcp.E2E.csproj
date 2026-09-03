@@ -13,12 +13,20 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Talent.Infrastructure/Talent.Infrastructure.csproj" />
     <ProjectReference Include="../../src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
+    <!--
+      Unlike the MCP server composition itself (rebuilt by hand here to control startup ordering — see
+      RealServerFixture's own remarks), the OAuth wiring is referenced rather than duplicated: it is
+      security logic, and this suite exists to prove the real thing enforces scopes correctly, not a
+      hand-copied approximation of it that could quietly drift from what Program.cs actually does.
+    -->
+    <ProjectReference Include="../../src/Talent.Mcp.Server/Talent.Mcp.Server.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Keycloak" />
     <!-- The HTTP transport side of the host; Talent.Mcp.Tools brings the client side transitively. -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>

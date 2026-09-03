@@ -61,6 +61,15 @@
   </ItemGroup>
 
   <ItemGroup Label="Auth — OAuth 2.1 resource server">
+    <!--
+      The SDK's own AddAuthorizationFilters()/[Authorize(Policy = ...)] mechanism was considered and
+      rejected here: it needs Microsoft.AspNetCore.Authorization on the tool methods themselves, and
+      Talent.Architecture.Tests.ForbiddenAssemblyReferences forbids any Microsoft.AspNetCore.* assembly
+      in Talent.Mcp.Tools — deliberately, since the stdio host loads that assembly too and cold start is
+      the metric ADR-0004 is protecting. Scope enforcement instead reads the Mcp-Method/Mcp-Name request
+      headers directly in Talent.Mcp.Server.Authentication.ToolScopeAuthorizationHandler, which needs
+      nothing beyond what this host already references.
+    -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
   </ItemGroup>
 

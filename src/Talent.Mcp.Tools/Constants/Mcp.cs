@@ -35,6 +35,35 @@ public static class Mcp
         public const string ConfirmRejection = "confirm_rejection";
     }
 
+    /// <summary>
+    /// The OAuth 2.1 scope each tool requires, matching the optional client scopes declared in
+    /// <c>deploy/keycloak/realm.json</c>.
+    /// <para>
+    /// Lives here rather than under <c>Talent.Mcp.Server</c>: which scope guards which tool is a fact
+    /// about the tool surface itself, not about the HTTP host. Only the HTTP host reads these values —
+    /// <c>ToolScopeAuthorizationHandler</c> maps a called tool's wire name to the scope it requires —
+    /// but the mapping belongs with the tool names it is keyed by, the same reasoning that keeps
+    /// <see cref="ToolNames"/> here rather than duplicated per host.
+    /// </para>
+    /// </summary>
+    public static class OAuthScopes
+    {
+        /// <summary>Read job postings: <c>search_jobs</c>, <c>get_job</c>, <c>extract_skills</c>.</summary>
+        public const string JobsRead = "talent.jobs.read";
+
+        /// <summary>Read candidate data and compute fit scores: <c>score_candidate_fit</c>.</summary>
+        public const string CandidatesRead = "talent.candidates.read";
+
+        /// <summary>Write candidate-derived data: <c>bulk_score_shortlist</c>.</summary>
+        public const string CandidatesWrite = "talent.candidates.write";
+
+        /// <summary>Destructive: <c>reject_candidate</c>, gated behind MRTR confirmation as well.</summary>
+        public const string CandidatesReject = "talent.candidates.reject";
+
+        /// <summary>Every scope, for a host that needs to register one authorization policy per scope.</summary>
+        public static readonly string[] All = [JobsRead, CandidatesRead, CandidatesWrite, CandidatesReject];
+    }
+
     /// <summary>Protocol revisions this server speaks.</summary>
     public static class ProtocolVersions
     {

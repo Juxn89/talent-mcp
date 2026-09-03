@@ -36,8 +36,9 @@ public sealed class RejectCandidateMrtrE2ETests
     {
         const string Reason = "Failed the take-home assessment: no test coverage on the exercise.";
 
+        var token = await this.fixture.MintTokenAsync("openid talent.candidates.reject");
         await using var client = await this.fixture
-            .CreateClientAsync((_, _) => ValueTask.FromResult(Accept(confirm: true)));
+            .CreateClientAsync(token, (_, _) => ValueTask.FromResult(Accept(confirm: true)));
 
         var result = await client.CallToolAsync(
             "reject_candidate",
@@ -67,8 +68,9 @@ public sealed class RejectCandidateMrtrE2ETests
     {
         var declinedId = Guid.Parse("b0000003-0000-0000-0000-000000000000"); // Clara Nowak
 
+        var token = await this.fixture.MintTokenAsync("openid talent.candidates.reject");
         await using var client = await this.fixture
-            .CreateClientAsync((_, _) => ValueTask.FromResult(Accept(confirm: false)));
+            .CreateClientAsync(token, (_, _) => ValueTask.FromResult(Accept(confirm: false)));
 
         var result = await client.CallToolAsync(
             "reject_candidate",
@@ -98,8 +100,9 @@ public sealed class RejectCandidateMrtrE2ETests
         // that it declares no elicitation capability, which a client on the interop revision does not.
         // Same real-degraded-case construction RejectCandidateToolTests uses over the in-memory
         // transport; here it runs the tool's error-message path over a real HTTP call instead.
+        var token = await this.fixture.MintTokenAsync("openid talent.candidates.reject");
         await using var client = await this.fixture
-            .CreateClientAsync(protocolVersion: Mcp.ProtocolVersions.Interop[0]);
+            .CreateClientAsync(token, protocolVersion: Mcp.ProtocolVersions.Interop[0]);
 
         var candidateId = Guid.Parse("b0000004-0000-0000-0000-000000000000"); // Diego Marín
 

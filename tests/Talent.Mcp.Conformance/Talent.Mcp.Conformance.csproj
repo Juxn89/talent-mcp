@@ -19,6 +19,8 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- Keycloak only, for KeycloakMetadataConformanceTests — a standalone realm, no MCP server. -->
+    <PackageReference Include="Testcontainers.Keycloak" />
     <!-- The HTTP transport side of the host; Talent.Mcp.Tools brings the client side transitively. -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>

@@ -56,7 +56,7 @@ Diagnostic ids and messages below were read from `src/Common/Obsoletions.cs` at 
 | `EnumSchema`, `LegacyTitledEnumSchema` | The current schema generation path | `MCP9001` (SEP-1330). **Easy to hit here:** `SkillCategory` and the skill taxonomy mean tool input schemas carry enum-typed parameters |
 | `WithToolsFromAssembly()` and the non-generic `WithTools(...)` | The generic **`WithTools<T>()`**, one call per tool type | `IL2026`. Trimming silently removes reflection-discovered tools — `tools/list` answers `-32601 Method not available` with no crash and no error log. Measured, see [ADR-0002](./docs/adr/0002-native-aot-and-explicit-tool-registration.md) |
 | `RequestContextParams` parameterless ctor | The overload taking a parameters argument | `MCP9003` |
-| **Dynamic Client Registration (DCR)** | **Client ID Metadata Documents** | ADR required in F3 |
+| **Dynamic Client Registration (DCR)** | **Pre-registration** (static realm clients) — not CIMD, see below | [ADR-0005](./docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md) |
 | Old client OAuth callback delegate | `ClientOAuthOptions.AuthorizationCallbackHandler` | `MCP9007` — the old delegate cannot supply the RFC 9207 issuer |
 | `OpenTelemetry.Exporter.Jaeger` | `OpenTelemetry.Exporter.OpenTelemetryProtocol` | Abandoned package (last release 1.5.1); Jaeger ingests OTLP directly |
 | `InMemoryMcpTaskStore` in production paths | `PostgresMcpTaskStore` from `Talent.Mcp.Toolkit` | In-memory is fine in unit tests only; a restart must not lose in-flight tasks |
@@ -483,7 +483,9 @@ talent-mcp                                       # stdio host
 - **OAuth 2.1** with PKCE S256 — mandatory, not negotiable
 - **Scopes per tool**, distinguishing read / write / destructive
 - **`iss` validation** per RFC 9207; credentials indexed by issuer
-- **Client ID Metadata Documents**, not DCR (deprecated)
+- **Pre-registration** for both OAuth clients, not DCR (deprecated) and not CIMD — Keycloak's CIMD
+  support is experimental with an open bug blocking MCP-shaped clients; see
+  [ADR-0005](./docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md)
 - **Signed handles** — a client must not be able to forge or extend one; expired handles are rejected
 - **HTTPS only** in production (`ASPNETCORE_HTTPS_PORT`)
 - **No secrets in code** — environment / `IConfiguration` only
@@ -560,6 +562,7 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 - [ADR-0002 · Native AOT and explicit tool registration](./docs/adr/0002-native-aot-and-explicit-tool-registration.md)
 - [ADR-0003 · Cross-node task input responses](./docs/adr/0003-cross-node-task-input-responses.md)
 - [ADR-0004 · One tool surface, two hosts](./docs/adr/0004-shared-tool-surface-across-both-hosts.md)
+- [ADR-0005 · Client registration: pre-registration, not DCR or CIMD](./docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md)
 - [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
 - [Verification · What SDK 2.2.0 actually does with a tool surface](./docs/verification/sdk-2.2.0-tool-surface-behaviour.md)
 

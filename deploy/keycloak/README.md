@@ -58,9 +58,24 @@ Verified against the running stack, not just written:
 > `talent-mcp-client` **rejects a `plain` challenge**. Asserting `["S256"]` exactly would fail
 > against a correctly configured Keycloak.
 
-F3 completes the wiring: scope-to-tool enforcement inside the resource server, RFC 9207 `iss`
-validation, credentials indexed by issuer, Client ID Metadata Documents instead of DCR, and the
-conformance test that asserts S256 in the metadata.
+## What F3 completed
+
+- Scope-to-tool enforcement inside the resource server (`ToolScopeAuthorizationHandler`), verified
+  end to end against a real Keycloak in `Talent.Mcp.E2E`, not just against fakes.
+- RFC 9207 `iss` validation on the client side, exercised by driving the real authorization_code + PKCE
+  flow through `ClientOAuthOptions.AuthorizationCallbackHandler` (`AuthorizationCodeE2ETests`).
+- The conformance test this note originally promised: `Talent.Mcp.Conformance.KeycloakMetadataConformanceTests`
+  asserts S256 is advertised and that `talent-mcp-client` specifically refuses a `plain` challenge.
+- **Not Client ID Metadata Documents.** This note originally said F3 would move to CIMD instead of DCR.
+  It does not: see [ADR-0005](../../docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md) —
+  Keycloak's CIMD support turned out to be experimental (26.6.0+, behind a feature flag this compose
+  stack does not enable) with an open bug blocking it for MCP-shaped clients. Both OAuth clients here
+  stay pre-registered, which the MCP spec itself ranks ahead of CIMD when client and server already
+  have a relationship — exactly this project's shape.
+- **"Credentials indexed by issuer"** — the spec's requirement that a client not reuse credentials
+  across authorization servers — has no artifact to attach to here. This project publishes no
+  persistent demo client; `Talent.Mcp.E2E` mints a token per test and keeps nothing between runs. If a
+  persistent client is ever added, this is where that requirement would apply.
 
 ## Clients
 

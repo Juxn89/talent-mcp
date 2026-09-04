@@ -8,6 +8,7 @@ using Talent.Application.Ports;
 using Talent.Application.Services;
 using Talent.Application.UseCases;
 using Talent.Mcp.Toolkit.Caching;
+using Talent.Mcp.Toolkit.Tracing;
 using Talent.Mcp.Tools.Constants;
 using Talent.Mcp.Tools.Tools;
 
@@ -58,7 +59,14 @@ public static class TalentTools
                     var result = await next(request, cancellationToken).ConfigureAwait(false);
                     result.Tools = OrderCanonically(result.Tools);
                     return CachePolicies.ToolsList.ApplyTo(result);
-                }));
+                }))
+            // F4: one span per tool call, on both hosts. AddCallToolFilter cannot do this — it never
+            // fires for a tool that IS registered — so this uses the lower-level message-filter
+            // pipeline instead. See ToolExecutionTelemetry's own doc comment, and ADR-0006, for why it
+            // takes both an incoming and an outgoing filter and how they correlate.
+            .WithMessageFilters(static filters => filters
+                .AddIncomingFilter(ToolExecutionTelemetry.Incoming)
+                .AddOutgoingFilter(ToolExecutionTelemetry.Outgoing));
     }
 
     /// <summary>

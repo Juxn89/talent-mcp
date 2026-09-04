@@ -1,0 +1,35 @@
+# Single-binary Loki, filesystem storage — sized for a local demo, not production. Matches the shape
+# Loki's own image ships as local-config.yaml. See docs/verification/otel-stack-versions.md for why
+# this is 3.7.7 and why OTLP logs land at /otlp, not /otlp/v1/logs.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # OTLP ingestion has no built-in structured-metadata concept beyond resource/log attributes; this
+  # keeps Loki from rejecting them on a fresh instance with defaults tuned for plain log lines.
+  allow_structured_metadata: true

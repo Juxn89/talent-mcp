@@ -55,8 +55,15 @@ public static class TalentInfrastructureServiceCollectionExtensions
         var connectionString = ReadConnectionString(configuration);
         services.AddDbContext<TalentDbContext>(options => options.UseNpgsql(connectionString));
 
-        services.AddScoped<IJobRepository, EfJobRepository>();
-        services.AddScoped<ICandidateRepository, EfCandidateRepository>();
+        // Wrapped in a timing decorator, not registered as the port directly: TimingJobRepository/
+        // TimingCandidateRepository report elapsed time to the ambient ToolTelemetryScope for the
+        // db.query_time span tag (F4). Wrapping here, once, is what keeps timing out of all five use
+        // cases, which depend only on the port interfaces.
+        services.AddScoped<EfJobRepository>();
+        services.AddScoped<IJobRepository>(sp => new TimingJobRepository(sp.GetRequiredService<EfJobRepository>()));
+        services.AddScoped<EfCandidateRepository>();
+        services.AddScoped<ICandidateRepository>(
+            sp => new TimingCandidateRepository(sp.GetRequiredService<EfCandidateRepository>()));
 
         // The codec is a singleton because it owns an HMAC instance; the adapter over it is a
         // singleton too and does NOT own it, so a scope ending cannot dispose the shared HMAC. That

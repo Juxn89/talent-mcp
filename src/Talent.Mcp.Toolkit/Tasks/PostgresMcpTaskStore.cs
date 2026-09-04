@@ -1,10 +1,12 @@
 namespace Talent.Mcp.Toolkit.Tasks;
 
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using Npgsql;
 using NpgsqlTypes;
+using Talent.Mcp.Toolkit.Tracing;
 
 /// <summary>
 /// A Postgres-backed <see cref="IMcpTaskStore"/>.
@@ -65,6 +67,20 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
         this.connectionString = connectionString;
         this.options = options ?? new PostgresMcpTaskStoreOptions();
         this.timeProvider = timeProvider ?? TimeProvider.System;
+
+        // "tasks en vuelo" in a Grafana dashboard, per AGENTS.md's Observability section — a true
+        // fleet-wide count, not a per-instance one, because a stateless server (ADR-0001) can run
+        // several nodes: only Postgres knows the real total. The callback blocks briefly on a direct
+        // ADO.NET round trip rather than the async API, because ObservableGauge's callback contract is
+        // synchronous; failures return zero rather than throwing, since one bad export cycle must not
+        // take metrics collection down with it.
+        // The instrument's lifetime belongs to the Meter, not to whatever holds the returned handle,
+        // so nothing here needs to keep or dispose it.
+        TalentMeter.Instance.CreateObservableGauge(
+            "talent.tasks.in_flight",
+            this.CountInFlightTasks,
+            unit: "{tasks}",
+            description: "Non-terminal bulk_score_shortlist tasks recorded in Postgres, across every node.");
     }
 
     /// <inheritdoc />
@@ -459,6 +475,35 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
         "failed" => McpTaskStatus.Failed,
         _ => throw new InvalidOperationException($"Unrecognised task status '{status}' in the store."),
     };
+
+    private int CountInFlightTasks()
+    {
+        if (this.disposed)
+        {
+            return 0;
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(this.connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(
+                $"""
+                SELECT count(*) FROM {PostgresTaskStoreSchema.TasksTable}
+                WHERE status NOT IN ('completed', 'cancelled', 'failed')
+                """,
+                connection);
+
+            return Convert.ToInt32(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            // A metrics callback must never throw — one unreachable Postgres would otherwise take the
+            // whole export cycle down, not just this one gauge.
+            return 0;
+        }
+    }
 
     private async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)
     {

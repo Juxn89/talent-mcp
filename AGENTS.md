@@ -503,9 +503,18 @@ OpenTelemetry only — no vendor lock-in, and **not** the deprecated MCP Logging
 - **Logs:** `stderr` in the stdio host; OTLP → Collector → Loki in the HTTP host
 - **Metrics:** OTLP → Collector → Prometheus (`localhost:9090`)
 
-Every tool execution is a span carrying `tool.name`, `tool.input`, `tool.output_tokens`,
-`db.query_time`, `cache.hit`, `oauth.token_refresh`. Client context is extracted from `_meta`
-(`traceparent`/`tracestate`/`baggage`) so a single trace spans client → server → Postgres.
+Every tool execution is a span carrying `tool.name`, `tool.input`, `tool.output_tokens` and
+`db.query_time`. Client context is extracted from `_meta` (`traceparent`/`tracestate`/`baggage`) so a
+single trace spans client → server → Postgres.
+
+**`cache.hit` and `oauth.token_refresh` are out of scope, not pending** — verified during F4, same
+move as F3's "credentials indexed by issuer" (see the OAuth section). Neither has a real signal to tag
+with: `ttlMs`/`cacheScope` are a client-facing freshness *hint* the server stamps on responses, not a
+server-side cache the server itself consults, so there is no hit or miss to report; and this server is
+a pure OAuth 2.1 resource server that validates bearer tokens and never exchanges or refreshes one —
+`AuthorizationCodeE2ETests` documents that no refresh-token flow is demonstrated anywhere in this
+project. An absent tag is honest here; a hardcoded `false` would not be. See
+[ADR-0006](./docs/adr/0006-observability-instrumentation.md).
 
 Grafana dashboards (`localhost:3000`) versioned as code in `deploy/grafana/dashboards/`:
 latency per tool, error rate, in-flight tasks.
@@ -551,6 +560,8 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 22. ❌ **Reading `McpServer.ClientCapabilities` under stateless HTTP** — it is `null` on every request, because it is the session-level notion that `initialize` used to populate and SEP-2575 removed the handshake. The client declares itself in each request's `_meta/io.modelcontextprotocol/clientCapabilities` instead. Use `McpClientCapabilityReader`, which consults both. Getting this wrong disabled MRTR on the HTTP host while 135 tool tests stayed green, because the in-memory stream transport *does* populate the property.
 23. ❌ **Expecting `McpException` under a task to produce `FailedTaskResult`** — it does not. A tool throwing `McpException` while running as an MCP task completes with `McpTaskStatus.Completed`, carrying the ordinary `isError: true` `CallToolResult` as `CompletedTaskResult.Result` — the same shape a synchronous tool error already has. `FailedTaskResult` is reserved for an exception that is not an `McpException`. A task-mode test written against `FailedTaskResult` for a validation error fails for the wrong reason.
 24. ❌ **Forgetting that 2026-07-28 promotes request metadata to headers** — a raw HTTP call needs `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` on `tools/call`, *and* `_meta/io.modelcontextprotocol/protocolVersion` plus `_meta/io.modelcontextprotocol/clientCapabilities` in the body. A mismatch answers `-32020`, a missing `_meta` field `-32602`. The SDK client does all of this; a hand-rolled curl or a conformance assertion does not.
+25. ❌ **Reaching for `AddCallToolFilter` to instrument tool calls** — its own XML doc says it only wraps a call to a tool "that isn't found in the `McpServerTool` collection." All six tools here are registered, so it never fires for any of them. Use a message filter (`WithMessageFilters` → `AddIncomingFilter`/`AddOutgoingFilter`) instead — it wraps every JSON-RPC message regardless of routing, on both hosts. See [ADR-0006](./docs/adr/0006-observability-instrumentation.md).
+26. ❌ **Correlating an incoming and outgoing message filter by `RequestId` or `MessageContext.Server`** — a request id is scoped to its own client connection, so two different clients are free to both send `id: 1`, and a static dictionary keyed on it alone lets concurrent calls collide. Pairing the id with `context.Server` looks like the fix but isn't: measured 4 Sep 2026 against `WithStreamServerTransport`, `context.Server` is a *different* `McpServer` instance for a request than for its own response. What actually is stable across both legs of one call is `MessageContext.Items` — the same dictionary instance flows from the incoming context to the outgoing one it produced. Stash state there instead of in static state.
 
 ---
 
@@ -563,8 +574,10 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 - [ADR-0003 · Cross-node task input responses](./docs/adr/0003-cross-node-task-input-responses.md)
 - [ADR-0004 · One tool surface, two hosts](./docs/adr/0004-shared-tool-surface-across-both-hosts.md)
 - [ADR-0005 · Client registration: pre-registration, not DCR or CIMD](./docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md)
+- [ADR-0006 · Observability instrumentation](./docs/adr/0006-observability-instrumentation.md)
 - [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
 - [Verification · What SDK 2.2.0 actually does with a tool surface](./docs/verification/sdk-2.2.0-tool-surface-behaviour.md)
+- [Verification · The OTel Collector/Jaeger/Prometheus/Loki/Grafana stack](./docs/verification/otel-stack-versions.md)
 
 **External:**
 - [The 2026-07-28 Specification](https://blog.modelcontextprotocol.io/posts/2026-07-28/)

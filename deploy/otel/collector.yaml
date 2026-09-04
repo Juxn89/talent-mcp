@@ -1,0 +1,61 @@
+# OpenTelemetry Collector (contrib) config for the local stack.
+#
+# Versions and the reasoning behind each exporter choice are recorded in
+# docs/verification/otel-stack-versions.md, dated 4 Sep 2026 — read that before changing an exporter
+# here, especially the Jaeger one: Jaeger v1 (all-in-one, exporter-fronted) reached EOL 31 Dec 2025.
+# Jaeger v2 accepts OTLP natively, so there is no dedicated Jaeger exporter component below, just an
+# ordinary `otlp` exporter pointed at Jaeger's own OTLP port.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Traces -> Jaeger v2, which speaks OTLP directly.
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Metrics -> exposed here for Prometheus to scrape (deploy/prometheus/prometheus.yml targets this
+  # port), not pushed via remote-write.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  # Logs -> Loki's native OTLP ingestion endpoint. The path is `/otlp`, not `/otlp/v1/logs` — see the
+  # verification record for why that assumption was wrong on the first pass.
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+service:
+  # No service.telemetry.metrics.address override: 0.160.0 migrated self-telemetry metrics config
+  # onto the OTel Go SDK's own "readers" schema and rejects the old flat `address` key outright
+  # ("'migration.MetricsConfigV030' has invalid keys: address"), crash-looping the container —
+  # measured 4 Sep 2026 trying to expose collector self-metrics on 8888. Left on the collector's own
+  # default rather than chasing the new schema for a diagnostic-only signal nothing in this stack
+  # depends on; the pipelines below (the actual traces/metrics/logs this project cares about) are
+  # unaffected by this block.
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/jaeger]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/loki]

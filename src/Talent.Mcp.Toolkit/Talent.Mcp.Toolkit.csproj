@@ -16,5 +16,8 @@
     <PackageReference Include="ModelContextProtocol.Core" />
     <PackageReference Include="ModelContextProtocol.Extensions.Tasks" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
   </ItemGroup>
 </Project>

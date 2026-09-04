@@ -15,11 +15,25 @@
 //                                  (it has no HTTP surface to protect), which is why this wiring lives
 //                                  here and not in Talent.Mcp.Tools.
 using ModelContextProtocol.AspNetCore;
+using OpenTelemetry.Trace;
 using Talent.Infrastructure.DependencyInjection;
 using Talent.Mcp.Server.Authentication;
 using Talent.Mcp.Tools;
+using Talent.Mcp.Toolkit.Tracing;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// F4: traces + metrics on Talent.Mcp.Toolkit's shared sources, OTLP-exported when
+// Talent:Otel:Endpoint is configured (the compose Collector in dev; unset and silently skipped in the
+// unit/conformance/E2E fixtures, none of which run a Collector). ASP.NET Core request instrumentation
+// and OTLP log export (→ Collector → Loki) are added here because they are HTTP-only — the stdio host
+// calls AddTalentTelemetry too, but neither of these, since it has no HTTP surface and must keep
+// logging to stderr instead (pitfall #11).
+builder.Services.AddTalentTelemetry(
+    builder.Configuration,
+    serviceName: "talent-mcp-http",
+    configureTracing: static tracing => tracing.AddAspNetCoreInstrumentation());
+builder.Logging.AddTalentOtlpLogging(builder.Configuration, serviceName: "talent-mcp-http");
 
 // The composition root, and the only place in the process that knows a database exists. Throws at
 // startup when the connection string, the handle signing key or the tunables are missing or wrong.

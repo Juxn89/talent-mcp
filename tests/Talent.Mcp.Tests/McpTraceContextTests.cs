@@ -1,7 +1,7 @@
 namespace Talent.Mcp.Tests;
 
 using System.Diagnostics;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using Talent.Mcp.Toolkit.Constants;
 using Talent.Mcp.Toolkit.Tracing;
 using Xunit;
@@ -73,10 +73,7 @@ public sealed class McpTraceContextTests
     public void A_non_string_traceparent_is_ignored()
     {
         // A client sending a number where a string belongs should not take the request down with it.
-        var meta = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
-        {
-            [McpMetaKeys.TraceParent] = JsonDocument.Parse("42").RootElement,
-        };
+        var meta = new JsonObject { [McpMetaKeys.TraceParent] = 42 };
 
         Assert.False(McpTraceContext.TryExtract(meta, out _));
     }
@@ -189,13 +186,13 @@ public sealed class McpTraceContextTests
         return listener;
     }
 
-    private static Dictionary<string, JsonElement> Meta(params (string Key, string Value)[] entries)
+    private static JsonObject Meta(params (string Key, string Value)[] entries)
     {
-        var meta = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        var meta = new JsonObject();
 
         foreach (var (key, value) in entries)
         {
-            meta[key] = JsonSerializer.SerializeToElement(value);
+            meta[key] = value;
         }
 
         return meta;

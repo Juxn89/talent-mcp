@@ -15,5 +15,8 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- ASP.NET Core request instrumentation — HTTP-host-only, unlike Talent.Mcp.Toolkit's shared
+         AddTalentTelemetry, which is transport-agnostic. -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
   </ItemGroup>
 </Project>

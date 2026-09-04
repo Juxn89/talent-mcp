@@ -1,0 +1,14 @@
+# Scrapes the OTel Collector's `prometheus` exporter (deploy/otel/collector.yaml), not the
+# application directly — the app never speaks Prometheus's scrape format, it only ever exports OTLP.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: talent-mcp
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  # No otel-collector-self job: exposing the Collector's own self-telemetry needs the 0.160.0
+  # "readers" schema, not the flat address override this stack tried and rolled back — see
+  # docs/verification/otel-stack-versions.md. Not worth chasing for a diagnostic-only signal.

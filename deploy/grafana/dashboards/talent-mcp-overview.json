@@ -1,0 +1,79 @@
+{
+  "title": "Talent.Mcp overview",
+  "uid": "talent-mcp-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["talent-mcp"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Metric names, confirmed",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Panel queries use `talent_tool_duration_milliseconds_bucket`, `talent_tool_errors_total` and `talent_tasks_in_flight` — confirmed 4 Sep 2026 against a live OTel Collector 0.160.0 (`talent.tool.duration`/`talent.tool.errors`/`talent.tasks.in_flight` on the `Talent.Mcp` meter, sanitized by the `prometheusexporter`), see `docs/verification/otel-stack-versions.md` finding 5. If a future Collector upgrade changes the sanitization rules, re-derive with `curl http://localhost:8889/metrics | grep talent_` and fix these queries to match."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latency per tool (p95)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, tool_name) (rate(talent_tool_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "{{tool_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Tool error rate",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "sum by (tool_name) (rate(talent_tool_errors_total[5m]))",
+          "legendFormat": "{{tool_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "bulk_score_shortlist tasks in flight",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": { "unit": "none" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "talent_tasks_in_flight",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Talent.Infrastructure.DependencyInjection;
 using Talent.Mcp.Tools;
+using Talent.Mcp.Toolkit.Tracing;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -17,6 +18,11 @@ var builder = Host.CreateApplicationBuilder(args);
 // This is also why the revision deprecated the MCP Logging API for stdio hosts in favour of stderr.
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+
+// F4: traces + metrics only, same shared sources the HTTP host registers — no AddTalentOtlpLogging
+// here. OTel's own logging exporter would reintroduce exactly the stdout-corruption risk the comment
+// above exists to avoid, so this host's logs stay on stderr, never OTLP.
+builder.Services.AddTalentTelemetry(builder.Configuration, serviceName: "talent-mcp-stdio");
 
 builder.Services.AddTalentInfrastructure(builder.Configuration);
 

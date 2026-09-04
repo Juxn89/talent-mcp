@@ -39,6 +39,11 @@ internal static class RawJsonRpc
     /// <param name="metaClientCapabilities">
     /// Whether to include <c>_meta/io.modelcontextprotocol/clientCapabilities</c> in the body.
     /// </param>
+    /// <param name="traceParent">
+    /// A W3C <c>traceparent</c> to put in <c>_meta</c>, or <see langword="null"/> to omit it — trace
+    /// context travels in <c>_meta</c> under this revision, not as an HTTP header (see AGENTS.md's
+    /// Observability section).
+    /// </param>
     /// <returns>The request, ready to send.</returns>
     public static HttpRequestMessage ToolsCall(
         Uri endpoint,
@@ -48,7 +53,8 @@ internal static class RawJsonRpc
         string? protocolVersionHeader = Mcp.ProtocolVersions.Supported,
         string? methodHeader = "tools/call",
         bool metaProtocolVersion = true,
-        bool metaClientCapabilities = true)
+        bool metaClientCapabilities = true,
+        string? traceParent = null)
     {
         var meta = new JsonObject();
         if (metaProtocolVersion)
@@ -59,6 +65,11 @@ internal static class RawJsonRpc
         if (metaClientCapabilities)
         {
             meta[McpMetaKeys.ClientCapabilities] = new JsonObject();
+        }
+
+        if (traceParent is not null)
+        {
+            meta[McpMetaKeys.TraceParent] = traceParent;
         }
 
         var argumentsNode = new JsonObject();

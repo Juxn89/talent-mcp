@@ -101,11 +101,109 @@ services:
   #   depends_on:
   #     postgres: { condition: service_healthy }
   #     keycloak: { condition: service_healthy }
-  #
-  # --- Added in F4 -------------------------------------------------------------------------
-  # otel-collector / jaeger / prometheus / grafana
-  # Config already has its homes: ./otel/collector.yaml, ./grafana/dashboards/
+
+  # --- Added in F4: observability -------------------------------------------------------------
+  # Versions verified against each project's own releases on 4 Sep 2026 — see
+  # docs/verification/otel-stack-versions.md, which also explains the two surprises: Jaeger v1 is EOL
+  # and v2 takes OTLP directly (no jaegerexporter needed), and Loki's OTLP endpoint is `/otlp`, not
+  # `/otlp/v1/logs`.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0
+    container_name: talent-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC — Talent:Otel:Endpoint points here
+      - "${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP
+      - "${OTEL_METRICS_PORT:-8889}:8889" # Prometheus scrape target
+    # No healthcheck: the contrib image ships no shell (distroless-style base), so neither
+    # CMD-SHELL nor a plain CMD probe is available without adding a tool the image does not have.
+    # depends_on below therefore uses service_started, not service_healthy.
+    depends_on:
+      jaeger:
+        condition: service_started
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
+  jaeger:
+    # Jaeger v1 (all-in-one, exporter-fronted) reached EOL 31 Dec 2025. v2 is rebuilt on the OTel
+    # Collector framework and speaks OTLP natively on 4317/4318 — see the verification record.
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    container_name: talent-jaeger
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686" # Query UI, also what Grafana's Jaeger datasource reads
+    # No healthcheck for the same no-shell reason as otel-collector.
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: talent-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.7
+    container_name: talent-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    # No healthcheck: measured 4 Sep 2026, this image ships neither a shell nor wget/curl (`docker exec
+    # ... sh` fails with "executable file not found in $PATH", the same failure mode CMD-SHELL and a
+    # plain CMD wget probe both hit). depends_on below uses service_started, not service_healthy.
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    container_name: talent-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # NOT nested under /etc/grafana/provisioning: that whole tree is a single read-only bind mount
+      # above, and Docker cannot create a new mountpoint directory inside a read-only mount — measured
+      # 4 Sep 2026 ("read-only file system" at container create). /var/lib/grafana is the grafana-data
+      # volume instead, which is writable, so mounting a path under it works.
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+    restart: unless-stopped
 
 volumes:
   postgres-data:
     name: talent-mcp-postgres-data
+  prometheus-data:
+    name: talent-mcp-prometheus-data
+  loki-data:
+    name: talent-mcp-loki-data
+  grafana-data:
+    name: talent-mcp-grafana-data

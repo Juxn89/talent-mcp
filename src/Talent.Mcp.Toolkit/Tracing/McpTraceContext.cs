@@ -1,7 +1,7 @@
 namespace Talent.Mcp.Toolkit.Tracing;
 
 using System.Diagnostics;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using Talent.Mcp.Toolkit.Constants;
 
 /// <summary>
@@ -15,11 +15,19 @@ using Talent.Mcp.Toolkit.Constants;
 /// <para>
 /// Nothing here is recruitment-specific, which is why it is in the toolkit.
 /// </para>
+/// <para>
+/// <b>Takes <see cref="JsonObject"/>, not a <c>JsonElement</c> dictionary.</b> An earlier revision of
+/// this type was built against <c>IReadOnlyDictionary&lt;string, JsonElement&gt;</c>, which does not
+/// match how <c>_meta</c> actually reaches any caller: <see cref="ModelContextProtocol.Protocol.RequestParams.Meta"/>
+/// — what a tool sees as <c>context.Params?.Meta</c> — is a <see cref="JsonObject"/>, the same type
+/// <see cref="McpClientCapabilityReader"/> already consumes. That mismatch is why this type had unit
+/// tests but zero production callers until F4 wired it into <c>ToolExecutionTelemetry</c>.
+/// </para>
 /// </summary>
 public static class McpTraceContext
 {
     /// <summary>
-    /// Reads <c>traceparent</c> and <c>tracestate</c> from a <c>_meta</c> dictionary.
+    /// Reads <c>traceparent</c> and <c>tracestate</c> from a <c>_meta</c> object.
     /// </summary>
     /// <param name="meta">The request's <c>_meta</c>, or <see langword="null"/> when absent.</param>
     /// <param name="context">The parsed context when the metadata carried a usable one.</param>
@@ -29,9 +37,7 @@ public static class McpTraceContext
     /// its tool call served with a fresh trace, not an error. Losing a trace link is an observability
     /// problem; failing the call would make it a correctness one.
     /// </returns>
-    public static bool TryExtract(
-        IReadOnlyDictionary<string, JsonElement>? meta,
-        out ActivityContext context)
+    public static bool TryExtract(JsonObject? meta, out ActivityContext context)
     {
         context = default;
 
@@ -54,15 +60,14 @@ public static class McpTraceContext
     }
 
     /// <summary>
-    /// Reads W3C Baggage entries from a <c>_meta</c> dictionary.
+    /// Reads W3C Baggage entries from a <c>_meta</c> object.
     /// </summary>
     /// <param name="meta">The request's <c>_meta</c>, or <see langword="null"/> when absent.</param>
     /// <returns>
     /// The parsed key/value pairs, or an empty list. Malformed entries are skipped individually rather
     /// than discarding the whole header, so one bad pair does not cost the rest.
     /// </returns>
-    public static IReadOnlyList<KeyValuePair<string, string>> ExtractBaggage(
-        IReadOnlyDictionary<string, JsonElement>? meta)
+    public static IReadOnlyList<KeyValuePair<string, string>> ExtractBaggage(JsonObject? meta)
     {
         if (meta is null)
         {
@@ -119,7 +124,7 @@ public static class McpTraceContext
     public static Activity? StartServerActivity(
         ActivitySource source,
         string name,
-        IReadOnlyDictionary<string, JsonElement>? meta,
+        JsonObject? meta,
         ActivityKind kind = ActivityKind.Server)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -141,8 +146,13 @@ public static class McpTraceContext
         return activity;
     }
 
-    private static string? ReadString(IReadOnlyDictionary<string, JsonElement> meta, string key) =>
-        meta.TryGetValue(key, out var element) && element.ValueKind == JsonValueKind.String
-            ? element.GetString()
-            : null;
+    private static string? ReadString(JsonObject meta, string key)
+    {
+        if (!meta.TryGetPropertyValue(key, out var node) || node is not JsonValue value)
+        {
+            return null;
+        }
+
+        return value.TryGetValue<string>(out var text) ? text : null;
+    }
 }

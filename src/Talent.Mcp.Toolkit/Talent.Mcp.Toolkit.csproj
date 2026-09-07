@@ -4,7 +4,10 @@
     <IsPackable>true</IsPackable>
     <PackageId>Talent.Mcp.Toolkit</PackageId>
     <Description>Domain-agnostic Model Context Protocol primitives for the 2026-07-28 revision: signed TTL-bounded handles, cache policies, a Postgres task store, and OpenTelemetry context extraction from _meta.</Description>
-    <PackageTags>mcp;model-context-protocol;ai;llm</PackageTags>
+    <PackageProjectUrl>https://github.com/juxn89/talent-mcp</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>mcp;model-context-protocol;protocol-primitives;tasks;oauth2;ai-tooling</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Library code: deadlocks in console/tool hosts if ConfigureAwait(false) is omitted. -->
     <NoWarn>$(NoWarn)</NoWarn>
   </PropertyGroup>

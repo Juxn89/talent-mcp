@@ -3,12 +3,18 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Talent.Mcp.Server.Stdio</RootNamespace>
     <Description>stdio MCP host for the recruitment tool surface, published as the `talent-mcp` dotnet tool.</Description>
-    <IsPackable>false</IsPackable>
+    <PackageId>Talent.Mcp.Server</PackageId>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>talent-mcp</ToolCommandName>
+    <PackageProjectUrl>https://github.com/juxn89/talent-mcp</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageDescription>MCP server for the recruitment domain — job search, candidate-fit scoring, and skill extraction. Stateless Streamable HTTP with OAuth 2.1 + PKCE authorization and deterministic scoring.</PackageDescription>
+    <PackageTags>mcp;model-context-protocol;recruitment;dotnet-tool;oauth2;postgresql;ai-tooling;llm-agents</PackageTags>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!--
       NO ModelContextProtocol.AspNetCore here, and no reference to the HTTP host. This is the process
-      launched once per client session, so cold start is the metric that matters (ADR-0002). Packaging
-      as a dotnet tool happens in F5.
+      launched once per client session, so cold start is the metric that matters (ADR-0002).
     -->
   </PropertyGroup>
   <ItemGroup>

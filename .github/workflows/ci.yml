@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ['main', 'feat/**', 'fix/**']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet restore
+      - run: dotnet build -c Release
+        # TreatWarningsAsErrors=true in Directory.Build.props — build fails on any warning
+
+  architecture:
+    name: Architecture Rules
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Architecture.Tests -c Release --no-build --logger 'console;verbosity=normal'
+
+  unit-domain:
+    name: Unit Tests (Domain)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Domain.Tests -c Release --no-build --logger 'console;verbosity=normal'
+
+  unit-infrastructure:
+    name: Unit Tests (Infrastructure)
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Infrastructure.Tests -c Release --no-build --logger 'console;verbosity=normal'
+
+  tools:
+    name: Tools Tests (In-Memory Transport)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Mcp.Tests -c Release --no-build --logger 'console;verbosity=normal'
+
+  conformance:
+    name: Protocol Conformance
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - uses: docker/setup-buildx-action@v3
+      - name: Start compose stack
+        run: docker compose -f deploy/compose.yaml up -d --wait
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Mcp.Conformance -c Release --no-build --logger 'console;verbosity=normal'
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f deploy/compose.yaml logs --tail=50
+
+  e2e:
+    name: End-to-End (Full Stack)
+    runs-on: ubuntu-latest
+    needs: [conformance]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - uses: docker/setup-buildx-action@v3
+      - name: Start compose stack
+        run: docker compose -f deploy/compose.yaml up -d --wait
+      - run: dotnet restore
+      - run: dotnet test tests/Talent.Mcp.E2E -c Release --no-build --logger 'console;verbosity=normal'
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f deploy/compose.yaml logs --tail=50

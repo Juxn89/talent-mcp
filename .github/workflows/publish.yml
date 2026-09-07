@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -24,11 +25,19 @@ jobs:
         run: dotnet pack src/Talent.Mcp.Server.Stdio -c Release --no-build --output ./nupkg
       - name: Pack Talent.Mcp.Toolkit (library)
         run: dotnet pack src/Talent.Mcp.Toolkit -c Release --no-build --output ./nupkg
-      - name: Push to NuGet
+      - name: Get OIDC Token
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('https://api.nuget.org/v3/index.json');
+            core.setSecret(token);
+            core.setOutput('token', token);
+      - name: Push to NuGet (Trusted Publishing)
         run: |
           for pkg in ./nupkg/*.nupkg; do
             dotnet nuget push "$pkg" \
-              -k ${{ secrets.NUGET_API_KEY }} \
+              -k "${{ steps.oidc.outputs.token }}" \
               -s https://api.nuget.org/v3/index.json \
               --skip-duplicate
           done

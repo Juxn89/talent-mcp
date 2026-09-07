@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:10 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 WORKDIR /build
 
 # Copy the project files
@@ -12,7 +12,7 @@ RUN dotnet publish -c Release \
     src/Talent.Mcp.Server/Talent.Mcp.Server.csproj
 
 # Stage 2: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
 # Create non-root user

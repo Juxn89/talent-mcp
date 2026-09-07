@@ -1,0 +1,92 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-nuget:
+    name: Publish NuGet Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - name: Restore
+        run: dotnet restore
+      - name: Build Release
+        run: dotnet build -c Release --no-restore
+      - name: Pack Talent.Mcp.Server (dotnet tool)
+        run: dotnet pack src/Talent.Mcp.Server.Stdio -c Release --no-build --output ./nupkg
+      - name: Pack Talent.Mcp.Toolkit (library)
+        run: dotnet pack src/Talent.Mcp.Toolkit -c Release --no-build --output ./nupkg
+      - name: Push to NuGet
+        run: |
+          for pkg in ./nupkg/*.nupkg; do
+            dotnet nuget push "$pkg" \
+              -k ${{ secrets.NUGET_API_KEY }} \
+              -s https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
+  publish-docker:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: juxn89
+          password: ${{ secrets.GHCR_PAT }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/juxn89/talent-mcp
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [publish-nuget, publish-docker]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              draft: false,
+              prerelease: tag.includes('preview') || tag.includes('rc')
+            });
+            core.info(`Created release: ${release.data.html_url}`);

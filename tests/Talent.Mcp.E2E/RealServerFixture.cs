@@ -81,9 +81,23 @@ public sealed class RealServerFixture : IAsyncLifetime
     /// </summary>
     private static string RealmConfigurationFilePath { get; } = ResolveRealmConfigurationFilePath();
 
-    private static string ResolveRealmConfigurationFilePath(
-        [System.Runtime.CompilerServices.CallerFilePath] string thisFilePath = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFilePath)!, "..", "..", "deploy", "keycloak", "realm.json"));
+    private static string ResolveRealmConfigurationFilePath()
+    {
+        // Search upward from the test assembly location until we find the deploy folder
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current != null)
+        {
+            var realmFile = Path.Combine(current.FullName, "deploy", "keycloak", "realm.json");
+            if (File.Exists(realmFile))
+            {
+                return realmFile;
+            }
+            current = current.Parent;
+        }
+
+        // Fallback: use assembly location approach if search fails
+        return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(RealServerFixture).Assembly.Location)!, "..", "..", "..", "deploy", "keycloak", "realm.json"));
+    }
 
     /// <summary>
     /// Starts Postgres and Keycloak, migrates and seeds Postgres, then starts the real HTTP host —

@@ -87,6 +87,94 @@ Verified by `ArchUnitNET` on every build.
 
 ---
 
+## Testing
+
+All five test levels required for PR merge:
+
+```bash
+# Start the stack (required for infrastructure and conformance tests)
+docker compose -f deploy/compose.yaml up -d
+
+# Run all tests
+dotnet test
+
+# Or individual levels:
+dotnet test tests/Talent.Architecture.Tests    # Dependency rule
+dotnet test tests/Talent.Domain.Tests           # Pure functions (no Docker)
+dotnet test tests/Talent.Infrastructure.Tests   # EF Core / Postgres mapping
+dotnet test tests/Talent.Mcp.Tests              # Tool contracts
+dotnet test tests/Talent.Mcp.Conformance        # Protocol spec
+dotnet test tests/Talent.Mcp.E2E                # Full stack
+```
+
+CI enforces all five. Local development can skip the infrastructure tests if Docker is unavailable, but CI will catch issues.
+
+---
+
+## Publishing
+
+### dotnet tool (`talent-mcp`)
+
+```bash
+# Installed globally
+dotnet tool install --global Talent.Mcp.Server
+
+# Run directly
+talent-mcp
+
+# Use in Claude Code/Desktop settings
+```
+
+### NuGet Packages
+
+- **`Talent.Mcp.Server`** — dotnet tool with stdio MCP host
+- **`Talent.Mcp.Toolkit`** — Reusable protocol primitives (handles, tasks, cache) for downstream projects
+
+### Docker Image
+
+```bash
+# Build locally
+docker build -t talent-mcp:latest .
+
+# Run
+docker run -p 5000:5000 talent-mcp:latest
+
+# From GitHub Container Registry
+docker pull ghcr.io/juxn89/talent-mcp:latest
+docker run -p 5000:5000 ghcr.io/juxn89/talent-mcp:latest
+```
+
+### Release workflow
+
+Tag a version to trigger automatic publishing:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+GitHub Actions will:
+1. Run all CI tests ✅
+2. Publish `Talent.Mcp.Server` to NuGet
+3. Publish `Talent.Mcp.Toolkit` to NuGet
+4. Build and push Docker image to `ghcr.io/juxn89/talent-mcp`
+5. Create a GitHub Release
+
+**Requires secrets:**
+- `NUGET_API_KEY` — NuGet publish token
+- `GHCR_PAT` — GitHub Personal Access Token with `write:packages` permission
+
+---
+
+## Installation & Configuration
+
+See detailed guides:
+- **[INSTALLATION.md](./docs/INSTALLATION.md)** — All setup paths (Docker, tool, local dev)
+- **[CLAUDE_INTEGRATION.md](./docs/CLAUDE_INTEGRATION.md)** — Claude Code & Claude Desktop setup
+- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** — Local development workflow
+
+---
+
 ## Tools (MCP Services)
 
 | Tool | Input | Output | Required scope | Protocol capability exercised |

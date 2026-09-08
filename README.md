@@ -207,6 +207,13 @@ which is what makes the numbers reproducible rather than a description of one ma
 ceiling `bulk_score_shortlist` works to. `SkillNormalizer.Extract` is measured across three CV
 lengths, because its cost is proportional to alias count times text length rather than flat.
 
+Results and what they mean are in
+[`docs/verification/domain-benchmarks.md`](./docs/verification/domain-benchmarks.md). The short
+version: scoring a full 500-candidate shortlist costs about a millisecond, so whatever makes
+`bulk_score_shortlist` long-running is the data access around it, not the scorer. Allocation figures
+there are byte-identical across runs; the wall-clock ones were taken on a throttled laptop and are
+reported as orders of magnitude, not as measurements.
+
 ---
 
 ## Configuration

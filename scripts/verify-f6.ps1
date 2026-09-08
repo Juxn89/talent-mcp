@@ -39,7 +39,10 @@ if (-not $SkipBench) {
     Step "5. Benchmark harness runs"
     # --job dry checks the harness executes; publishable numbers come from a deliberate run on
     # named hardware, never from a busy machine.
-    dotnet run --project bench/Talent.Mcp.Bench -c Release --no-build -- --filter '*' --job dry | Out-Null
+    # --artifacts is NOT optional: without it a dry run overwrites the real results in
+    # BenchmarkDotNet.Artifacts with meaningless cold-start-per-op numbers.
+    $scratch = Join-Path $env:TEMP 'f6-bench-artifacts'
+    dotnet run --project bench/Talent.Mcp.Bench -c Release --no-build -- --filter '*' --job dry --artifacts $scratch | Out-Null
     if ($LASTEXITCODE -eq 0) { Ok "benchmarks execute" } else { Bad "benchmark harness failed" }
 } else {
     Step "5. Benchmarks skipped (-SkipBench)"

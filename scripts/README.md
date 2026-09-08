@@ -171,8 +171,10 @@ rather than replacing it: F5 checks that the artifacts build and pack, F6 checks
    `IsAotCompatible` being dropped from a `.csproj`, which otherwise breaks nothing and fails nothing.
 3. The task-store `jsonb` wire format and the golden handle vector are unchanged.
 4. The three test suites that need no Docker.
-5. The benchmark harness executes (`--job dry`). This checks that it *runs*, not that the numbers are
-   publishable — publishable numbers come from a deliberate run on named hardware.
+5. The benchmark harness executes (`--job dry`), writing to a scratch `--artifacts` directory so it
+   cannot overwrite real results — without that flag a dry run replaces them with meaningless
+   cold-start-per-op numbers. This checks that the harness *runs*, not that the numbers are
+   publishable; publishable numbers come from a deliberate run on named hardware.
 6. The trimmed self-contained publish completes (bash only; the PowerShell version skips it, since
    ADR-0007 puts cold-start measurement on one CI runner rather than on a developer laptop).
 

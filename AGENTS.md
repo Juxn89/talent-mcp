@@ -581,6 +581,7 @@ git tag v1.0.0 && git push origin v1.0.0            # → CI publishes NuGet + G
 - [Verification · SDK changelog 2.0.0 → 2.2.0](./docs/verification/sdk-2.0.0-to-2.2.0-review.md)
 - [Verification · What SDK 2.2.0 actually does with a tool surface](./docs/verification/sdk-2.2.0-tool-surface-behaviour.md)
 - [Verification · The OTel Collector/Jaeger/Prometheus/Loki/Grafana stack](./docs/verification/otel-stack-versions.md)
+- [Verification · Domain benchmarks](./docs/verification/domain-benchmarks.md)
 
 **External:**
 - [The 2026-07-28 Specification](https://blog.modelcontextprotocol.io/posts/2026-07-28/)

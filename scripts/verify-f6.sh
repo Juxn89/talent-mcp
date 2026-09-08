@@ -65,9 +65,11 @@ done
 if [[ $SKIP_BENCH -eq 0 ]]; then
   step "5. Benchmark harness runs"
   # --job dry: this checks the harness still executes, not that the numbers are publishable.
+  # --artifacts is NOT optional: without it a dry run overwrites the real results in
+  # ./BenchmarkDotNet.Artifacts with meaningless cold-start-per-op numbers.
   # Publishable numbers come from a deliberate run on named hardware, never from a busy machine.
   if dotnet run --project bench/Talent.Mcp.Bench -c Release --no-build -- \
-       --filter '*' --job dry > /tmp/f6-bench.log 2>&1; then
+       --filter '*' --job dry --artifacts /tmp/f6-bench-artifacts \n       > /tmp/f6-bench.log 2>&1; then
     ok "benchmarks execute"
   else
     bad "benchmark harness failed (see /tmp/f6-bench.log)"

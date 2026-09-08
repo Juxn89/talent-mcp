@@ -16,11 +16,14 @@ oracle.
 ```bash
 git clone https://github.com/Juxn89/talent-mcp.git && cd talent-mcp
 docker compose -f deploy/compose.yaml up -d --wait
+
+# The hosts do not migrate the domain schema at startup — only the task store's own tables.
+dotnet ef database update --project src/Talent.Infrastructure --startup-project src/Talent.Mcp.Server
+
 dotnet run --project src/Talent.Mcp.Server
 ```
 
-That brings up Postgres with seeded jobs and candidates, Keycloak with the realm imported, and the
-full OpenTelemetry stack:
+That brings up Postgres, Keycloak with the realm imported, and the full OpenTelemetry stack:
 
 | | |
 |---|---|
@@ -32,11 +35,18 @@ full OpenTelemetry stack:
 | Loki | <http://localhost:3100> |
 | OTLP intake | `localhost:4317` (gRPC), `localhost:4318` (HTTP) |
 | Postgres | `localhost:5432` — `talent` / `talent`, databases `talent` and `keycloak` |
-| Seeded user | `recruiter` / `recruiter` |
+| Keycloak realm user | `recruiter` / `recruiter` |
 
 Every credential above is a dev-only default and every one is overridable from the environment.
 Image tags are pinned to exact patch versions, because `latest` makes a green CI run
 unreproducible three weeks later.
+
+> **The domain tables start empty.** `deploy/postgres/init/` only creates Keycloak's database, and
+> `TalentSeeder` — which does migrate and seed realistic jobs and candidates — is currently wired
+> into the test fixtures only (`Talent.Mcp.E2E/RealServerFixture`, `Talent.Infrastructure.Tests`).
+> So `search_jobs` against a freshly composed stack returns nothing until you seed it yourself.
+> The plan calls for `docker compose up` to include seeds; closing that gap needs a seeding entry
+> point on the hosts and is tracked as follow-up work rather than quietly implied here.
 
 ```bash
 docker compose -f deploy/compose.yaml down     # add -v to drop the volume and force a realm re-import

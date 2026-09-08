@@ -147,3 +147,61 @@ docker run -p 5000:5000 talent-mcp:verify
 - **Local verification:** Use `verify-f5.ps1` or `verify-f5.sh`
 - **GitHub Actions:** `.github/workflows/ci.yml` runs on every PR
 - **Release publishing:** `.github/workflows/publish.yml` runs on tag push
+
+---
+
+## `verify-f6.sh` / `verify-f6.ps1`
+
+Pre-tag verification for F6 (trim posture, benchmarks, documentation). Complements the F5 pair
+rather than replacing it: F5 checks that the artifacts build and pack, F6 checks what F6 added.
+
+```bash
+./scripts/verify-f6.sh [--skip-bench] [--skip-publish]
+```
+
+```powershell
+.\scripts\verify-f6.ps1 [-SkipBench]
+```
+
+**What it checks:**
+
+1. The build is clean with the trim analyzers armed — `IsAotCompatible` turns `IL2026`/`IL3050` into
+   errors, so a newly introduced reflection-based serialization site fails here.
+2. `TrimPostureRules` — the four inner assemblies still declare `IsTrimmable`. Catches
+   `IsAotCompatible` being dropped from a `.csproj`, which otherwise breaks nothing and fails nothing.
+3. The task-store `jsonb` wire format and the golden handle vector are unchanged.
+4. The three test suites that need no Docker.
+5. The benchmark harness executes (`--job dry`). This checks that it *runs*, not that the numbers are
+   publishable — publishable numbers come from a deliberate run on named hardware.
+6. The trimmed self-contained publish completes (bash only; the PowerShell version skips it, since
+   ADR-0007 puts cold-start measurement on one CI runner rather than on a developer laptop).
+
+A successful trimmed publish does **not** prove the binary serves anything. That is the functional
+gate in `measure-startup.sh`, which CI runs on every push.
+
+---
+
+## `measure-startup.sh` and `summarize-startup.py`
+
+Cold start and memory for the stdio host, across four publish configurations. Run by the
+`startup-benchmark` CI job; runnable locally against any reachable Postgres.
+
+```bash
+scripts/measure-startup.sh [--runs 12] [--warmup 2] [--out artifacts]
+```
+
+Publishes framework-dependent (the JIT baseline), self-contained, trimmed, and ReadyToRun from one
+commit, then for each one runs a functional gate — `tools/list` must return all six tools **by name**
+— before recording any timing. A configuration that starts fast and serves nothing is not a faster
+configuration, and that failure is silent: `-32601`, no crash, no error log.
+
+Writes `startup-metrics.json` (every raw sample) and `startup-metrics.md` (the table that lands in
+ADR-0007 and the job summary), plus `trim-warnings.txt`, the unsuppressed ILLink output.
+
+Requires `/usr/bin/time` — peak RSS is read externally because a process cannot reliably observe its
+own peak, and the peak may occur after the last phase marker.
+
+The environment variables it needs are the ones the host refuses to start without:
+`ConnectionStrings__Talent` and `Talent__HandleSigningKey`. There is deliberately no flag to skip the
+database; see ADR-0007 for why.
+

@@ -87,7 +87,21 @@ public sealed class HandleCodec : IDisposable
         }
 
         var expiresAt = this.timeProvider.GetUtcNow().Add(timeToLive).ToUnixTimeSeconds();
+        // Deliberately still reflection-based, and the only two such sites left in this assembly.
+        // Mint/TryRead are open generics over payload types the CONSUMER owns, and this assembly
+        // ships to NuGet — it cannot enumerate them, which is exactly what a JsonSerializerContext
+        // requires. The elegant fix (a payload interface exposing its own static JsonTypeInfo) is
+        // blocked by the dependency rule, not by taste: JobSearchCursor lives in Talent.Application,
+        // which is forbidden from referencing this assembly — that prohibition is the whole reason
+        // the IHandleCodec port exists. The remaining option, threading a JsonTypeInfo<TPayload>
+        // parameter through, is a BREAKING change to a published 1.0.x API and touches four
+        // production projects, so it is sequenced after F6's measurements rather than rushed in
+        // alongside them. See ADR-0007.
+        // Suppression is scoped to these lines on purpose: the analyzer stays armed for the rest of
+        // the assembly, so a NEW reflection site is still a build error.
+#pragma warning disable IL2026, IL3050
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload, PayloadJsonOptions);
+#pragma warning restore IL2026, IL3050
 
         // Layout: [8-byte big-endian expiry][8-byte payload-type marker][payload][32-byte HMAC over
         // everything before it]. Both header fields sit inside the signed region, so extending a
@@ -173,9 +187,12 @@ public sealed class HandleCodec : IDisposable
 
         try
         {
+            // See the note on the Mint side; same reason, same deferral.
+#pragma warning disable IL2026, IL3050
             payload = JsonSerializer.Deserialize<TPayload>(
                 buffer.AsSpan(HeaderLengthBytes, signedLength - HeaderLengthBytes),
                 PayloadJsonOptions);
+#pragma warning restore IL2026, IL3050
         }
         catch (JsonException)
         {

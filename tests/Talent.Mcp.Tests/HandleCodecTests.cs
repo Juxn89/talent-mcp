@@ -239,6 +239,37 @@ public sealed class HandleCodecTests
         Assert.True(bytes.Length > 8 + SHA256.HashSizeInBytes);
     }
 
+    [Fact]
+    public void Handle_bytes_are_unchanged_for_a_known_payload()
+    {
+        // A golden vector, pinned before F6 changes anything about how payloads are serialized.
+        //
+        // HandleCodec's two JsonSerializer calls are still reflection-based: they are open generics
+        // over consumer-owned payload types, and this assembly ships to NuGet, so it cannot
+        // enumerate them into a JsonSerializerContext. Fixing that means threading a
+        // JsonTypeInfo<TPayload> through the public API — a breaking change, sequenced after F6.
+        //
+        // When that lands, the source-generated context will NOT inherit PayloadJsonOptions'
+        // JsonSerializerDefaults.Web settings (camelCase, case-insensitive reads,
+        // AllowReadingFromString) unless they are declared explicitly. If they are missed, handles
+        // minted before the deploy stop reading after it. Handle lifetimes are minutes, so the blast
+        // radius is bounded — but bounded is not the same as acceptable, and a silent format change
+        // is exactly the kind of thing that ships unnoticed.
+        //
+        // This test turns that from a code review question into a build failure.
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
+        using var codec = new HandleCodec(Key, clock);
+
+        var handle = codec.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+
+        // Decodes to: [8-byte expiry][8-byte type marker]{"query":"dotnet","skip":40}[32-byte HMAC].
+        // The camelCase payload is JsonSerializerDefaults.Web — the setting a source-generated
+        // context silently does not inherit.
+        Assert.Equal(
+            "AAAAAGqQKRi4yPyKLkvv9HsicXVlcnkiOiJkb3RuZXQiLCJza2lwIjo0MH2TEy1Bopel2kEZCTerF9NHbRAzloP2ZYr9ocwlYbzkig",
+            handle);
+    }
+
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
     {
         private DateTimeOffset now = now;

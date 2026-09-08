@@ -17,6 +17,13 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Library code: deadlocks in console/tool hosts if ConfigureAwait(false) is omitted. -->
     <NoWarn>$(NoWarn)</NoWarn>
+    <!--
+      Turns on the trim, AOT and single-file analyzers together and marks the assembly
+      IsTrimmable. Combined with the repo-wide TreatWarningsAsErrors, any newly introduced
+      reflection-based serialization site becomes a build error rather than a warning nobody
+      reads — which is what ADR-0002's consequences section asked CI to catch.
+    -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <!--
     NO ProjectReference to Talent.Domain. This ships to NuGet as a reusable protocol library, so no

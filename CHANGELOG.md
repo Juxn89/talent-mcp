@@ -26,6 +26,13 @@ Entries below cover both unless a package is named.
   `Talent.Mcp.Toolkit`. With the repo-wide `TreatWarningsAsErrors`, a newly introduced
   reflection-based serialization site is now a build error. This closes the consequence left open in
   [ADR-0002](docs/adr/0002-native-aot-and-explicit-tool-registration.md).
+
+  **`Talent.Mcp.Toolkit` deliberately does not declare `IsTrimmable`.** `HandleCodec` still
+  serializes reflectively, and the suppression at those two call sites hides the warning from a
+  consumer trimming their own application, not only from this repo's build. Marking the assembly
+  trim-safe would publish a guarantee it does not keep. Consumers who trim are no worse off than
+  under 1.0.x — they simply are not told the assembly is safe. See
+  [ADR-0007](docs/adr/0007-trim-clean-over-native-aot.md).
 - `TrimPostureRules` asserts the four assemblies still declare `IsTrimmable`, so deleting the
   property from a `.csproj` fails a test instead of silently disarming the analyzers.
 - `TaskStoreSerializationTests` pins the `jsonb` wire format of `InputRequest` and `InputResponse`

@@ -31,11 +31,13 @@ open: making trim regressions visible at merge time rather than at publish time.
 
 **Ship trim-clean. Do not attempt Native AOT with EF Core compiled models in this phase.**
 
-1. `IsAotCompatible=true` on `Talent.Domain`, `Talent.Application`, `Talent.Mcp.Tools` and
-   `Talent.Mcp.Toolkit`. One property enables the trim, AOT and single-file analyzers and marks the
-   assemblies `IsTrimmable`. With the repo-wide `TreatWarningsAsErrors`, a newly introduced
-   reflection-based serialization site becomes a **build error**. That is ADR-0002's open
-   consequence, discharged on every build rather than once in a publish job.
+1. The trim, AOT and single-file analyzers are armed on `Talent.Domain`, `Talent.Application`,
+   `Talent.Mcp.Tools` and `Talent.Mcp.Toolkit`. With the repo-wide `TreatWarningsAsErrors`, a newly
+   introduced reflection-based serialization site becomes a **build error** — ADR-0002's open
+   consequence, discharged on every build rather than once in a publish job. The first three use
+   `IsAotCompatible=true`, which also marks them `IsTrimmable`; the toolkit sets the analyzer
+   properties directly and makes no such claim, for the reason in *The suppression reaches
+   consumers* below.
 2. `Talent.Infrastructure` and both hosts are deliberately **excluded**. EF Core is not trim-clean,
    and `TalentInfrastructureServiceCollectionExtensions.BindOptions` has its own `IL2026`/`IL3050`
    site via `configuration.GetSection(...).Get<TalentOptions>()`. Turning the analyzers on there
@@ -113,6 +115,39 @@ Four options were considered, and the elegant one is blocked by architecture rat
 
 The suppression is scoped to the two lines, not the project, so the analyzer stays armed everywhere
 else and the exception stays one known exception instead of quietly becoming policy.
+
+### The suppression reaches consumers, and that changed a decision
+
+Measured after the fact, prompted by asking whether F6 broke anything for the published packages:
+**`#pragma warning disable IL2026, IL3050` does not only silence our build. It silences a downstream
+consumer trimming their own application.** A trimmed publish of the stdio host reports **4**
+`HandleCodec` diagnostics with the pragmas removed and **0** with them in place.
+
+That makes `IsAotCompatible=true` on `Talent.Mcp.Toolkit` untenable. The property emits
+`AssemblyMetadata("IsTrimmable", "True")` — a published guarantee that the assembly is safe to trim —
+on a package whose one reflective path is invisible to the consumer who would be harmed by it.
+Asserting a safety property while suppressing the signal that contradicts it is the ADR-0002 failure
+mode with the blast radius pointed at strangers instead of at us.
+
+So the toolkit now sets `EnableTrimAnalyzer`, `EnableAotAnalyzer` and `EnableSingleFileAnalyzer`
+directly and **does not** set `IsAotCompatible`. The build-time gate is unchanged; the claim is gone.
+`Talent.Domain`, `Talent.Application` and `Talent.Mcp.Tools` keep `IsAotCompatible` — they are
+genuinely clean, with zero sites between them.
+
+**What this does not fix, stated plainly:** removing the claim does not restore the consumer's
+warning. No `IL2104` appears either, because the assembly now produces no warnings to roll up — the
+pragmas still hide them. A consumer who trims still gets no build-time signal about `HandleCodec`;
+they simply are no longer told the assembly is safe. That is honest labelling, not a solution.
+
+The only thing that restores the signal is annotating `Mint`/`TryRead` with
+`[RequiresUnreferencedCode]`, which propagates through `IHandleCodec` into `Talent.Application` and
+both hosts — and adding that attribute to an already-published public method is itself a
+source-breaking change for any consumer building with `TreatWarningsAsErrors`. It is therefore part
+of the queued `JsonTypeInfo<TPayload>` change, not a separate step: that change removes the
+reflection, which removes the need for both the suppression and the annotation.
+
+`TrimPostureRules` asserts the asymmetry in both directions, so re-adding `IsAotCompatible` to the
+toolkit before `HandleCodec` is fixed fails a test rather than silently re-publishing the claim.
 
 Two guardrails make that change safe when it comes:
 

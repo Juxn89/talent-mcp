@@ -3,6 +3,13 @@
     <RootNamespace>Talent.Mcp.Toolkit</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>Talent.Mcp.Toolkit</PackageId>
+    <!--
+      Versioned independently of the `talent-mcp` tool: this is the library A1 takes a
+      dependency on, so a breaking change here must not force a major on the tool, and a
+      tool release must not churn this package's version. Overrides the repo-wide default
+      in Directory.Build.props.
+    -->
+    <Version>1.0.5</Version>
     <Description>Domain-agnostic Model Context Protocol primitives for the 2026-07-28 revision: signed TTL-bounded handles, cache policies, a Postgres task store, and OpenTelemetry context extraction from _meta.</Description>
     <PackageProjectUrl>https://github.com/juxn89/talent-mcp</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

@@ -79,6 +79,74 @@ jobs:
       - run: dotnet restore
       - run: dotnet test tests/Talent.Mcp.Tests -c Release --logger 'console;verbosity=normal'
 
+  startup-benchmark:
+    name: Cold Start & Memory
+    runs-on: ubuntu-latest
+    needs: build
+    # Not a merge gate on timing. GitHub's 2-vCPU runners are noisy enough that a latency threshold
+    # would be flaky theatre; the job fails only if a shipped configuration cannot serve its tools.
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - name: Install GNU time
+        # The shell builtin `time` cannot report peak RSS; /usr/bin/time -v can, and a process cannot
+        # reliably observe its own peak.
+        run: sudo apt-get update && sudo apt-get install -y time
+      - name: Measure cold start and memory
+        env:
+          ConnectionStrings__Talent: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+          # Dev-only, and required: AddTalentInfrastructure refuses to start without a signing key,
+          # by design. Decodes to the ASCII string 'talent-mcp-dev-only-signing-key!'.
+          Talent__HandleSigningKey: dGFsZW50LW1jcC1kZXYtb25seS1zaWduaW5nLWtleSE=
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        # Defaults for tiered compilation on purpose: that is what a user actually gets.
+        run: ./scripts/measure-startup.sh --runs 12 --warmup 2 --out artifacts
+      - name: Publish table to job summary
+        if: always()
+        run: cat artifacts/startup-metrics.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: startup-metrics
+          path: |
+            artifacts/startup-metrics.json
+            artifacts/startup-metrics.md
+            artifacts/trim-warnings.txt
+
+  benchmarks:
+    name: Domain Benchmarks
+    runs-on: ubuntu-latest
+    needs: build
+    # Short job: CI checks that the harness still builds and runs, not that a shared runner produces
+    # publishable numbers. The figures quoted in docs come from a deliberate local run on named
+    # hardware.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.400'
+      - run: dotnet run --project bench/Talent.Mcp.Bench -c Release -- --filter '*' --job short
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: BenchmarkDotNet.Artifacts/results/
+
   conformance:
     name: Protocol Conformance
     runs-on: ubuntu-latest

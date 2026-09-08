@@ -9,6 +9,12 @@ using Microsoft.Extensions.Logging;
 using Talent.Infrastructure.DependencyInjection;
 using Talent.Mcp.Tools;
 using Talent.Mcp.Toolkit.Tracing;
+using Talent.Mcp.Server.Stdio;
+
+// First statement, so the elapsed clock starts as close to process entry as managed code allows.
+// Inert unless TALENT_STARTUP_TRACE is set. See StartupTrace for why the database work is marked
+// separately rather than skipped.
+StartupTrace.Mark("entry");
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -25,13 +31,16 @@ builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogL
 builder.Services.AddTalentTelemetry(builder.Configuration, serviceName: "talent-mcp-stdio");
 
 builder.Services.AddTalentInfrastructure(builder.Configuration);
+StartupTrace.Mark("services-registered");
 
 // Built and schema-prepared before the service provider exists — WithTasks needs a concrete instance,
 // not a DI factory — and started only after it. See ADR-0003 and the matching comment in the HTTP
 // host's Program.cs.
+StartupTrace.Mark("taskstore-prepare-start");
 var taskStore = await TalentInfrastructureServiceCollectionExtensions
     .CreateAndPrepareTaskStoreAsync(builder.Configuration)
     .ConfigureAwait(false);
+StartupTrace.Mark("taskstore-prepared");
 builder.Services.AddSingleton(taskStore);
 
 builder.Services
@@ -41,6 +50,11 @@ builder.Services
 
 var host = builder.Build();
 await taskStore.StartAsync().ConfigureAwait(false);
+
+// Everything blocking is done; from here the transport is serving. The second database interaction
+// -- StartAsync opening its own connection and awaiting the first LISTEN -- sits between the previous
+// marker and this one, so it is attributable rather than folded into "MCP wiring".
+StartupTrace.MarkReady("ready");
 
 try
 {

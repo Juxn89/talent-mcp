@@ -8,6 +8,9 @@
     <Project Path="src/Talent.Mcp.Toolkit/Talent.Mcp.Toolkit.csproj" />
     <Project Path="src/Talent.Mcp.Tools/Talent.Mcp.Tools.csproj" />
   </Folder>
+  <Folder Name="/bench/">
+    <Project Path="bench/Talent.Mcp.Bench/Talent.Mcp.Bench.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Talent.Architecture.Tests/Talent.Architecture.Tests.csproj" />
     <Project Path="tests/Talent.Domain.Tests/Talent.Domain.Tests.csproj" />

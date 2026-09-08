@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    Imports the repo-root Directory.Build.props (MSBuild stops at the nearest one, so it must be
+    chained explicitly), then applies what only the benchmark project needs. Same shape as
+    tests/Directory.Build.props, and for the same reason: the root file is imported before the
+    project body, so anything conditional on a property the body sets can never fire there.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove($(MSBuildThisFile), $(MSBuildThisFileDirectory)../))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Benchmark methods are public because BenchmarkDotNet discovers them by reflection, but they
+      are not API. Without this the root's GenerateDocumentationFile=true demands an XML doc on
+      every [Benchmark] and CS1591 becomes an error via TreatWarningsAsErrors.
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

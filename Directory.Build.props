@@ -20,7 +20,7 @@
       this file said 1.0.0, which is how v1.0.2 through v1.0.5 all shipped stamped 1.0.1.
       Corrected in F6.
     -->
-    <Version>1.0.5</Version>
+    <Version>1.1.0</Version>
     <Authors>Juan Gómez</Authors>
     <PackageProjectUrl>https://github.com/Juxn89/talent-mcp</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

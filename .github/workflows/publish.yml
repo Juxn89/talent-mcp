@@ -49,6 +49,21 @@ jobs:
         run: dotnet pack src/Talent.Mcp.Toolkit -c Release --no-build --output ./nupkg -p:Version=${{ steps.version.outputs.version }}
       - name: Show what will be pushed
         run: ls -l ./nupkg
+      - name: Refuse to publish development configuration
+        # The last gate before an irreversible push. An `appsettings*.json` glob once put
+        # appsettings.Development.json inside the tool package on nuget.org, carrying the handle
+        # signing key that file itself warns can be used to forge a handle. Publishing cannot be
+        # undone, so this is checked here rather than trusted to a csproj staying correct.
+        run: |
+          for pkg in ./nupkg/*.nupkg; do
+            if unzip -l "$pkg" | grep -qi 'appsettings\.[A-Za-z]*\.json'; then
+              echo "::error::$pkg contains an environment-specific appsettings file. Refusing to publish."
+              unzip -l "$pkg" | grep -i appsettings
+              exit 1
+            fi
+          done
+          echo "No environment-specific configuration in any package."
+
       - name: Push to NuGet (Trusted Publishing)
         run: |
           # Globs .nupkg and .snupkg both, and in that order -- a symbol package is rejected if its

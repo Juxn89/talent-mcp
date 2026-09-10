@@ -23,6 +23,12 @@ Entries below cover both unless a package is named.
 
 ### Added
 
+- **Cold start is now measured for the artifact users actually install.** Configuration E packs,
+  installs via `dotnet tool install`, and times the command through its generated shim: **~323 ms**,
+  indistinguishable from a bare publish directory, so the shim costs nothing measurable. Checking
+  this also surfaced that nothing this repository publishes is built ReadyToRun, trimmed or
+  self-contained — the previous "ReadyToRun is the recommendation" described a delivery mode not in
+  use. Corrected in [ADR-0007](docs/adr/0007-trim-clean-over-native-aot.md) and the README.
 - **`HandleCodec` gained trim-safe overloads.** `Mint` and `TryRead` now take a
   `JsonTypeInfo<TPayload>`; the originals remain, marked `[Obsolete]` +
   `[RequiresUnreferencedCode]` + `[RequiresDynamicCode]`. **Not a breaking change** — existing code

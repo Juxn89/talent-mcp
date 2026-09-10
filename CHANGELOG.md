@@ -19,6 +19,18 @@ Entries below cover both unless a package is named.
 > resulting `409 Conflict` as success. `1.0.1` is the only prior version on nuget.org. Fixed in
 > 1.0.6, where the tag sets the version.
 
+## [Unreleased]
+
+### Added
+
+- **`docker compose up` now gives you a working stack.** A host running under `Development` applies
+  the migrations and inserts the seed jobs and candidates, so `search_jobs` returns something on the
+  first call. Previously nothing in production called `TalentSeeder` — only the test fixtures did —
+  so a clone that followed the README got a server with no domain tables. Controlled by
+  `Talent:Database:MigrateAndSeedOnStartup`, which is off everywhere else: the HTTP host can run as
+  several replicas whose migrations would race, and a schema change belongs to a deploy step rather
+  than to a process starting.
+
 ## [1.0.6] — 2026-09-10
 
 ### Added

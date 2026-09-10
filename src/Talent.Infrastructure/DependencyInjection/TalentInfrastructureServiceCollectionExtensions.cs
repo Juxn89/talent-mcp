@@ -7,6 +7,7 @@ using Talent.Application.Configuration;
 using Talent.Application.Ports;
 using Talent.Infrastructure.Handles;
 using Talent.Infrastructure.Persistence;
+using Talent.Infrastructure.Seeding;
 using Talent.Mcp.Toolkit;
 using Talent.Mcp.Toolkit.Tasks;
 
@@ -32,6 +33,23 @@ public static class TalentInfrastructureServiceCollectionExtensions
     /// </para>
     /// </summary>
     public const string SigningKeyPath = "Talent:HandleSigningKey";
+
+    /// <summary>
+    /// Configuration key that opts a host into applying migrations and seed data at startup.
+    /// <para>
+    /// Defaults to <see langword="false"/>, and deliberately so. Schema changes belong to a deploy
+    /// step somebody decided to run, not to a side effect of a process starting: the HTTP host can
+    /// run as several replicas, whose <c>MigrateAsync</c> calls would race on first boot, and the
+    /// stdio host is launched once per client session on a path F6 measured at ~315 ms, which a
+    /// migration check would inflate for every session forever.
+    /// </para>
+    /// <para>
+    /// It is set in <c>appsettings.Development.json</c> so that a fresh clone works from
+    /// <c>docker compose up</c> without a separate <c>dotnet ef database update</c>, which is what
+    /// the plan's first core principle promises.
+    /// </para>
+    /// </summary>
+    public const string MigrateAndSeedOnStartupPath = "Talent:Database:MigrateAndSeedOnStartup";
 
     /// <summary>Registers the Application ports against their EF Core and toolkit implementations.</summary>
     /// <param name="services">The service collection.</param>
@@ -73,6 +91,56 @@ public static class TalentInfrastructureServiceCollectionExtensions
             new SignedHandleCodec(sp.GetRequiredService<HandleCodec>(), ownsCodec: false));
 
         return services;
+    }
+
+    /// <summary>
+    /// Applies pending migrations and the seed data, when the host has opted in via
+    /// <see cref="MigrateAndSeedOnStartupPath"/>. A no-op otherwise.
+    /// <para>
+    /// Separate from <see cref="AddTalentInfrastructure"/> and called by the host after its service
+    /// provider exists, for the same reason <see cref="CreateAndPrepareTaskStoreAsync"/> is: touching
+    /// a database is a lifecycle decision belonging to whoever owns the process, not a side effect of
+    /// registering services.
+    /// </para>
+    /// <para>
+    /// Until F6 nothing in production wired this up at all. <see cref="TalentSeeder"/> existed and was
+    /// idempotent — its own documentation said "so <c>docker compose up</c> on an existing volume does
+    /// not fail or duplicate" — but the only callers were test fixtures, so a freshly composed stack
+    /// had no domain tables and <c>search_jobs</c> returned nothing.
+    /// </para>
+    /// </summary>
+    /// <param name="services">A built service provider containing <see cref="TalentDbContext"/>.</param>
+    /// <param name="configuration">Configuration to read the opt-in flag from.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// How many jobs and candidates were inserted, and whether the work ran at all. Zeros with
+    /// <c>Ran</c> true means the database was already seeded, which is the normal case on restart.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">An argument was <see langword="null"/>.</exception>
+    public static async Task<(bool Ran, int Jobs, int Candidates)> MigrateAndSeedAsync(
+        this IServiceProvider services,
+        IConfiguration configuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        if (!configuration.GetValue<bool>(MigrateAndSeedOnStartupPath))
+        {
+            return (false, 0, 0);
+        }
+
+        // A scope of its own: TalentDbContext is scoped, and the root provider has no ambient scope
+        // during startup. Resolving it directly would throw, and doing so lazily inside a request
+        // would put migration on a request path.
+        await using var scope = services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TalentDbContext>();
+
+        var (jobs, candidates) = await TalentSeeder
+            .SeedAsync(context, cancellationToken)
+            .ConfigureAwait(false);
+
+        return (true, jobs, candidates);
     }
 
     /// <summary>

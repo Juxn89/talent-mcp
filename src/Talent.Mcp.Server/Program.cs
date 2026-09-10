@@ -58,6 +58,20 @@ builder.Services
 
 var app = builder.Build();
 
+// Opt-in, and off unless Talent:Database:MigrateAndSeedOnStartup says otherwise — which
+// appsettings.Development.json does, so a fresh clone works straight from `docker compose up`.
+// Off by default because this host can run as several replicas whose MigrateAsync calls would race,
+// and because a schema change should be a deploy step somebody ran, not a side effect of a process
+// starting. Idempotent either way: TalentSeeder converges row by row.
+var seeded = await app.Services.MigrateAndSeedAsync(builder.Configuration).ConfigureAwait(false);
+if (seeded.Ran)
+{
+    app.Logger.LogInformation(
+        "Database migrated and seeded: {Jobs} jobs, {Candidates} candidates inserted.",
+        seeded.Jobs,
+        seeded.Candidates);
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 

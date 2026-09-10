@@ -23,6 +23,14 @@ Entries below cover both unless a package is named.
 
 ### Added
 
+- **The published packages carry a README, symbols and SourceLink.** Until now a `.nupkg` held only
+  the assembly and its XML docs, so the NuGet.org page rendered blank and nobody could debug into the
+  library. Each package now ships its own README (the repository one is repo-shaped, and its relative
+  links 404 on nuget.org), a `.snupkg` symbol package, and a `repository` entry pinned to the exact
+  commit.
+- **`Talent.Mcp.Toolkit` validates its public API against the last published version at pack time.**
+  A removed or changed member fails the build with `CP0002` instead of reaching consumers. Baseline
+  is 1.0.1 — the only version that ever reached nuget.org. Verified to bite by removing a member.
 - **Cold start is now measured for the artifact users actually install.** Configuration E packs,
   installs via `dotnet tool install`, and times the command through its generated shim: **~323 ms**,
   indistinguishable from a bare publish directory, so the shim costs nothing measurable. Checking

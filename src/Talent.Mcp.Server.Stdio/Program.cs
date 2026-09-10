@@ -49,6 +49,13 @@ builder.Services
     .AddTalentTools(taskStore);
 
 var host = builder.Build();
+
+// Same opt-in as the HTTP host, and off by default for an extra reason here: this process is
+// launched once per client session on a path F6 measured at ~315 ms to serving, and a migration
+// check on every launch would tax every session forever. Useful when pointing `talent-mcp` at a
+// fresh database; not something to leave on against a shared one.
+await host.Services.MigrateAndSeedAsync(builder.Configuration).ConfigureAwait(false);
+
 await taskStore.StartAsync().ConfigureAwait(false);
 
 // Everything blocking is done; from here the transport is serving. The second database interaction

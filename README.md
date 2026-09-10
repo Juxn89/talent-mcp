@@ -16,10 +16,6 @@ oracle.
 ```bash
 git clone https://github.com/Juxn89/talent-mcp.git && cd talent-mcp
 docker compose -f deploy/compose.yaml up -d --wait
-
-# The hosts do not migrate the domain schema at startup — only the task store's own tables.
-dotnet ef database update --project src/Talent.Infrastructure --startup-project src/Talent.Mcp.Server
-
 dotnet run --project src/Talent.Mcp.Server
 ```
 
@@ -41,12 +37,19 @@ Every credential above is a dev-only default and every one is overridable from t
 Image tags are pinned to exact patch versions, because `latest` makes a green CI run
 unreproducible three weeks later.
 
-> **The domain tables start empty.** `deploy/postgres/init/` only creates Keycloak's database, and
-> `TalentSeeder` — which does migrate and seed realistic jobs and candidates — is currently wired
-> into the test fixtures only (`Talent.Mcp.E2E/RealServerFixture`, `Talent.Infrastructure.Tests`).
-> So `search_jobs` against a freshly composed stack returns nothing until you seed it yourself.
-> The plan calls for `docker compose up` to include seeds; closing that gap needs a seeding entry
-> point on the hosts and is tracked as follow-up work rather than quietly implied here.
+Running under `Development` also applies the migrations and inserts realistic seed jobs and
+candidates, so `search_jobs` has something to find on the first call. That is
+`Talent:Database:MigrateAndSeedOnStartup`, and it is **off** anywhere else: the HTTP host can run as
+several replicas whose migrations would race, the stdio host is launched once per client session on a
+path where the check would cost every session, and a schema change should be a deploy step somebody
+ran rather than a side effect of a process starting. Seeding is idempotent, so a restart on an
+existing volume inserts nothing.
+
+To apply the schema without the flag — a real deployment, say — the ordinary EF path still works:
+
+```bash
+dotnet ef database update --project src/Talent.Infrastructure --startup-project src/Talent.Mcp.Server
+```
 
 ```bash
 docker compose -f deploy/compose.yaml down     # add -v to drop the volume and force a realm re-import
@@ -245,6 +248,7 @@ Environment variables use `__` for the `:` separator.
 | `Talent:Otel:Endpoint` | `Talent__Otel__Endpoint` | OTLP collector, e.g. `http://localhost:4317` |
 | `Talent:DefaultPageSize` | `Talent__DefaultPageSize` | Default page size (20) |
 | `Talent:MaxPageSize` | `Talent__MaxPageSize` | Page size ceiling (100) |
+| `Talent:Database:MigrateAndSeedOnStartup` | `Talent__Database__MigrateAndSeedOnStartup` | Apply migrations and seed at startup. **Off** unless set; on in `Development` |
 
 The connection string, signing key and issuer are **not** in `appsettings.json` on purpose:
 production supplies all three from the environment and the host refuses to start without them. Dev
@@ -252,7 +256,9 @@ values live in `appsettings.Development.json`, where the signing key is a labell
 decodes to an ASCII string. Never deploy with it; anyone who can read the file can forge a handle.
 
 The stdio host needs a connection string too. It is not a thin client: it reaches Postgres through
-the same adapters as the HTTP host, so only `extract_skills` works without one.
+the same adapters as the HTTP host, so only `extract_skills` works without one. It honours the same
+seeding flag, which is worth turning on once when pointing `talent-mcp` at a fresh database and off
+again afterwards.
 
 ---
 

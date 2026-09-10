@@ -6,6 +6,8 @@ using Talent.Application.Configuration;
 using Talent.Mcp.Tools.Constants;
 using Talent.Mcp.Tools.Tools;
 using Xunit;
+using Talent.Application.Serialization;
+using Talent.Mcp.Tools.Serialization;
 
 /// <summary>
 /// <c>reject_candidate</c>: the destructive tool, and the MRTR exchange.
@@ -223,6 +225,7 @@ public sealed class RejectCandidateToolTests
         // disagree with the signed state. The state says one reason; the arguments say another.
         var state = harness.Mint(
             new PendingRejection(ToolTestData.MadridSenior.Id, GoodReason),
+            TalentToolHandleJsonContext.Default.PendingRejection,
             TimeSpan.FromMinutes(5));
 
         var result = await harness.CallRawAsync(new CallToolRequestParams
@@ -292,6 +295,7 @@ public sealed class RejectCandidateToolTests
         var foreign = harness.Mint(
             new Talent.Application.UseCases.JobSearchCursor(
                 "engineer", [], "ES", Talent.Domain.Enums.WorkArrangement.Remote, 0, 20),
+            TalentHandleJsonContext.Default.JobSearchCursor,
             TimeSpan.FromMinutes(5));
 
         var result = await harness.CallRawAsync(new CallToolRequestParams
@@ -326,6 +330,7 @@ public sealed class RejectCandidateToolTests
 
         var state = harness.Mint(
             new PendingRejection(ToolTestData.MadridSenior.Id, GoodReason),
+            TalentToolHandleJsonContext.Default.PendingRejection,
             TimeSpan.FromMinutes(5));
 
         clock.Advance(TimeSpan.FromMinutes(6));
@@ -371,6 +376,7 @@ public sealed class RejectCandidateToolTests
 
         var state = harness.Mint(
             new PendingRejection(ToolTestData.MadridSenior.Id, GoodReason),
+            TalentToolHandleJsonContext.Default.PendingRejection,
             TimeSpan.FromMinutes(5));
 
         var result = await harness.CallRawAsync(new CallToolRequestParams

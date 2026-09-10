@@ -4,6 +4,7 @@ using Talent.Application.Configuration;
 using Talent.Application.Ports;
 using Talent.Domain.Entities;
 using Talent.Domain.Enums;
+using Talent.Application.Serialization;
 
 /// <summary>
 /// State a pagination handle carries between calls.
@@ -125,7 +126,8 @@ public sealed class SearchJobsUseCase
         string? pageHandle,
         CancellationToken cancellationToken = default)
     {
-        if (!this.handles.TryRead<JobSearchCursor>(pageHandle, out var cursor) || cursor is null)
+        if (!this.handles.TryRead(pageHandle, TalentHandleJsonContext.Default.JobSearchCursor, out var cursor)
+            || cursor is null)
         {
             return (null, SearchJobsFailure.InvalidOrExpiredHandle);
         }
@@ -160,6 +162,7 @@ public sealed class SearchJobsUseCase
                     criteria.Arrangement,
                     nextSkip,
                     criteria.Take),
+                TalentHandleJsonContext.Default.JobSearchCursor,
                 this.options.PaginationHandleTimeToLive)
             : null;
 

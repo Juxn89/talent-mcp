@@ -23,6 +23,14 @@ Entries below cover both unless a package is named.
 
 ### Added
 
+- **`HandleCodec` gained trim-safe overloads.** `Mint` and `TryRead` now take a
+  `JsonTypeInfo<TPayload>`; the originals remain, marked `[Obsolete]` +
+  `[RequiresUnreferencedCode]` + `[RequiresDynamicCode]`. **Not a breaking change** — existing code
+  compiles and existing handles read, and byte-identity between the two paths is asserted by test.
+  Consumers on the reflective path now get a trim warning where an F6 `#pragma` had been hiding one
+  from them. `Talent.Mcp.Toolkit` declares `IsAotCompatible` again as a result, and `HandleCodec` no
+  longer appears in a trimmed publish's diagnostics at all.
+  See [ADR-0007](docs/adr/0007-trim-clean-over-native-aot.md).
 - **`docker compose up` now gives you a working stack.** A host running under `Development` applies
   the migrations and inserts the seed jobs and candidates, so `search_jobs` returns something on the
   first call. Previously nothing in production called `TalentSeeder` — only the test fixtures did —

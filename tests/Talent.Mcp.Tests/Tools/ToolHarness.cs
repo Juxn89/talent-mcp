@@ -17,6 +17,7 @@ using Talent.Infrastructure.Handles;
 using Talent.Mcp.Toolkit;
 using Talent.Mcp.Tools;
 using Talent.Mcp.Tools.Constants;
+using System.Text.Json.Serialization.Metadata;
 
 /// <summary>
 /// A real MCP server and a real MCP client talking to each other over a pair of in-memory pipes.
@@ -269,20 +270,22 @@ internal sealed class ToolHarness : IAsyncDisposable
     /// <summary>Verifies and reads a handle, as the server would.</summary>
     /// <typeparam name="TPayload">Expected payload type.</typeparam>
     /// <param name="handle">The handle.</param>
+    /// <param name="payloadTypeInfo">The payload's serialization contract.</param>
     /// <param name="payload">The payload when authentic.</param>
     /// <returns>Whether the handle was authentic and unexpired.</returns>
-    public bool TryRead<TPayload>(string? handle, out TPayload? payload)
+    public bool TryRead<TPayload>(string? handle, JsonTypeInfo<TPayload> payloadTypeInfo, out TPayload? payload)
         where TPayload : notnull
-        => this.codec.TryRead(handle, out payload);
+        => this.codec.TryRead(handle, payloadTypeInfo, out payload);
 
     /// <summary>Mints a handle exactly as the server would, for tests that need a valid one up front.</summary>
     /// <typeparam name="TPayload">Payload type.</typeparam>
     /// <param name="payload">Payload to carry.</param>
+    /// <param name="payloadTypeInfo">The payload's serialization contract.</param>
     /// <param name="timeToLive">Lifetime.</param>
     /// <returns>The handle.</returns>
-    public string Mint<TPayload>(TPayload payload, TimeSpan timeToLive)
+    public string Mint<TPayload>(TPayload payload, JsonTypeInfo<TPayload> payloadTypeInfo, TimeSpan timeToLive)
         where TPayload : notnull
-        => this.codec.Mint(payload, timeToLive);
+        => this.codec.Mint(payload, payloadTypeInfo, timeToLive);
 
     private static string TextOfCore(CallToolResult result)
     {

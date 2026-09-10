@@ -22,22 +22,14 @@
     <!-- Library code: deadlocks in console/tool hosts if ConfigureAwait(false) is omitted. -->
     <NoWarn>$(NoWarn)</NoWarn>
     <!--
-      The analyzers are armed, but this assembly deliberately does NOT declare IsTrimmable.
-      Deliberately, and not as an oversight: IsAotCompatible would set it, and that would publish a
-      trim-safety guarantee this package does not keep. HandleCodec.Mint/TryRead are still
-      reflection-based, and the narrow suppression at those two call sites hides the warning from a
-      CONSUMER trimming their own app, not just from our build — measured: without the pragma a
-      downstream trimmed publish reports 4 HandleCodec diagnostics, with it, zero. Claiming
-      trim-safety while silencing the one signal that contradicts it is the silent-failure mode
-      ADR-0002 exists to prevent.
-
-      So consumers get the honest assembly-level "not marked trim-compatible" warning, and we keep
-      the build-time gate that ADR-0002's consequences section asked for. Restore IsAotCompatible
-      when the HandleCodec JsonTypeInfo change lands and the suppression goes away. See ADR-0007.
+      Restored once HandleCodec gained JsonTypeInfo overloads. The claim is honest now: the two
+      reflective paths that remain are the [Obsolete] overloads, and they carry
+      [RequiresUnreferencedCode]/[RequiresDynamicCode] rather than a #pragma. That distinction is the
+      whole point — a suppression hid the warning from CONSUMERS trimming their own applications
+      (measured: 4 diagnostics without it, 0 with), while an annotation pushes it to whoever actually
+      calls the obsolete overload, which is where the decision belongs. See ADR-0007.
     -->
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
-    <EnableAotAnalyzer>true</EnableAotAnalyzer>
-    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <!--
     NO ProjectReference to Talent.Domain. This ships to NuGet as a reusable protocol library, so no

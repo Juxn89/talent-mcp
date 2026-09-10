@@ -74,7 +74,7 @@ every site was in the toolkit.
 |---|---|
 | `Tasks/PostgresMcpTaskStore.cs` ×5 | Fixed — `McpTasksJsonContext.Default.InputRequest` / `.InputResponse` |
 | `Tracing/ToolExecutionTelemetry.cs` ×3 | Fixed — `McpJsonUtilities.DefaultOptions.GetTypeInfo<T>()` |
-| `HandleCodec.cs:90`, `:176` | **Deferred**, suppressed narrowly at the call site |
+| `HandleCodec.cs:90`, `:176` | ~~Deferred, suppressed narrowly~~ → **Fixed 10 Sep 2026**, see the resolution note below |
 
 Both fixes use SDK surface that is public and carries no trim annotations — verified against the
 2.2.0 assemblies rather than assumed. One detail is easy to get wrong: the serialize site in
@@ -88,7 +88,30 @@ old way. Both types declare their own `[JsonConverter]`, so the converter decide
 options' naming policy never enters into it. A store that cannot read its own history loses exactly
 the in-flight work it exists to protect.
 
-## Why `HandleCodec` is deferred rather than fixed
+## Why `HandleCodec` was deferred, and how it was resolved
+
+> **Closed 10 Sep 2026.** Resolved by a route this section evaluated and dismissed too quickly: a
+> **new overload** taking `JsonTypeInfo<TPayload>`, with the old one kept and annotated
+> `[Obsolete]` + `[RequiresUnreferencedCode]` + `[RequiresDynamicCode]`.
+>
+> The dismissal below of "annotate and propagate" was right about annotating the *only* overload —
+> that does climb through `IHandleCodec` into both `Program.cs` files. It was wrong to conclude the
+> annotation approach was therefore dominated. With a clean overload beside it, internal callers move
+> to the clean path and **nothing propagates**; the annotation stays on the obsolete overload, which
+> is exactly where a consumer still using the reflective path should be warned. It is the pattern the
+> BCL itself uses.
+>
+> So it is a **minor release, not the breaking major this section assumed**, and it also settles the
+> suppression problem described further down: the `#pragma` is gone, replaced by attributes that warn
+> callers instead of hiding from them. `Talent.Mcp.Toolkit` declares `IsAotCompatible` again, honestly
+> this time. Measured after the change: `HandleCodec` no longer appears in a trimmed publish's
+> diagnostics at all — only the two EF Core ones remain.
+>
+> The golden vector did its job. It was minted through the reflective path and now runs through the
+> source-generated one, producing the identical base64url string, which is what proves the
+> `JsonSourceGenerationOptions` replicate `JsonSerializerDefaults.Web`.
+
+The reasoning as it stood, kept because the constraint it describes is permanent:
 
 `Mint<TPayload>` and `TryRead<TPayload>` are open generics over payload types the **consumer** owns,
 and this assembly ships to NuGet. It cannot enumerate its consumers' types, which is precisely what a
@@ -117,6 +140,11 @@ The suppression is scoped to the two lines, not the project, so the analyzer sta
 else and the exception stays one known exception instead of quietly becoming policy.
 
 ### The suppression reaches consumers, and that changed a decision
+
+> **Superseded 10 Sep 2026** by the resolution above — the `#pragma` no longer exists. Kept
+> because the measurement is the reason the fix took the shape it did, and because the trap
+> generalises: a `#pragma` silences a downstream consumer's trim analysis, an attribute does
+> not.
 
 Measured after the fact, prompted by asking whether F6 broke anything for the published packages:
 **`#pragma warning disable IL2026, IL3050` does not only silence our build. It silences a downstream
@@ -298,9 +326,9 @@ than ADR-0002's silently empty tool set, and the gate would have caught either.
 - The named next step for widening trim coverage is the configuration-binding source generator for
   `BindOptions`, which is what currently keeps `Talent.Infrastructure` out — but tool-parameter
   metadata now ranks ahead of it, being the thing that actually fails.
-- `HandleCodec`'s API change is queued, breaking, and now guarded by a golden vector. Package versions
-  were decoupled in F6 specifically so the library can take that major without dragging the
-  `talent-mcp` tool with it.
+- ~~`HandleCodec`'s API change is queued, breaking~~ — **done, and not breaking**: shipped as an
+  added overload with the old one obsoleted, so it is a minor. The golden vector guarded it exactly
+  as intended.
 - Revisit AOT if EF Core compiled models plus Npgsql gain verified AOT support, or if the stdio host's
   dependency graph changes — which would mean revisiting ADR-0004 first.
 

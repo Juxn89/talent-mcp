@@ -213,18 +213,26 @@ lengths, because its cost is proportional to alias count times text length rathe
 Cold start and memory for the stdio host are measured separately, in CI rather than on a laptop, by
 the `startup-benchmark` job:
 
-| Configuration | Time to serving | Peak RSS | Publish size |
-|---|---:|---:|---:|
-| Framework-dependent (JIT) | 315 ms | 84.7 MB | 12.5 MB |
-| Self-contained, trimmed | **does not start** | — | 39.9 MB |
-| Self-contained, ReadyToRun | **172 ms** | 89.0 MB | 105.4 MB |
+| Configuration | Time to serving | Peak RSS | Size | Shipped? |
+|---|---:|---:|---:|:--:|
+| **Installed `dotnet tool`** | **323 ms** | 84.8 MB | 20.9 MB | **yes** |
+| Framework-dependent publish | 324 ms | 84.9 MB | 12.5 MB | — |
+| Self-contained, ReadyToRun | 177 ms | 89.0 MB | 105.4 MB | — |
+| Self-contained, trimmed | **does not start** | — | 39.9 MB | — |
 
-ReadyToRun nearly halves the time to a served request, which is the metric that matters for a process
-a client launches once per session. Trimming is not merely slower — the host throws at startup,
-because the SDK builds tool schemas by reflecting over parameter types and a domain enum has no
-metadata under trimming. The trim analyzer never warned about it; it reported two unrelated EF Core
-diagnostics. [ADR-0007](./docs/adr/0007-trim-clean-over-native-aot.md) has the stack trace and what
-it costs to reverse.
+**~323 ms is what you actually pay.** The apphost shim and muxer resolution that `dotnet tool
+install` adds cost nothing measurable over a bare publish directory, which was not the expectation.
+
+ReadyToRun nearly halves that, but it is not currently shippable where it would matter: cold start is
+a per-session cost for the stdio host, and that host reaches you as portable IL, which R2R would trade
+for a package per platform. Applying it to the container image instead would be theatre — that is a
+long-lived server whose startup is paid once.
+
+Trimming is not merely slower: the host throws at startup, because the SDK builds tool schemas by
+reflecting over parameter types and a domain enum has no metadata once trimmed. The trim analyzer
+never warned — it reported two unrelated EF Core diagnostics.
+[ADR-0007](./docs/adr/0007-trim-clean-over-native-aot.md) has the stack trace and what reversing it
+would cost.
 
 Results and what they mean are in
 [`docs/verification/domain-benchmarks.md`](./docs/verification/domain-benchmarks.md). The short

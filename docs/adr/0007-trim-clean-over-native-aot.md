@@ -251,25 +251,50 @@ about widening trim coverage.
 Produced by the `startup-benchmark` CI job (`scripts/measure-startup.sh`): 12 runs per configuration,
 first 2 discarded, median and min–max, all raw samples retained in the JSON artifact.
 
-Measured on `ubuntu-latest`, run 34502321306, 10 Sep 2026. Sizes are `linux-x64`.
+Measured on `ubuntu-latest`, run 34525379511, 10 Sep 2026. Sizes are `linux-x64`.
 
-| Configuration | Ready, median (min–max) | Process exit | Peak RSS | Publish size | Gate |
-|---|---:|---:|---:|---:|:--:|
-| **A** framework-dependent (JIT baseline) | 315.3 ms (313.2–318.2) | 658 ms | 84.7 MB | 12.5 MB | ✅ |
-| **B** self-contained | 313.7 ms (311.4–321.7) | 657 ms | 84.5 MB | 90.3 MB | ✅ |
-| **C** self-contained, `TrimMode=full` | — | — | — | 39.9 MB | ❌ |
-| **D** self-contained, ReadyToRun | **172.4 ms** (169.3–179.4) | 409 ms | 89.0 MB | 105.4 MB | ✅ |
+| Configuration | Ready, median (min–max) | Process exit | Peak RSS | Size | Gate | Shipped? |
+|---|---:|---:|---:|---:|:--:|:--:|
+| **A** framework-dependent (JIT baseline) | 324.1 ms (320.3–330.1) | 677.5 ms | 84.9 MB | 12.5 MB | ✅ | — |
+| **B** self-contained | 320.3 ms (317.2–330.0) | 672.0 ms | 84.7 MB | 90.3 MB | ✅ | — |
+| **C** self-contained, `TrimMode=full` | — | — | — | 39.9 MB | ❌ | — |
+| **D** self-contained, ReadyToRun | **177.4 ms** (172.7–189.9) | 418.5 ms | 89.0 MB | 105.4 MB | ✅ | — |
+| **E** installed `dotnet tool` | 323.5 ms (317.7–329.6) | 676.5 ms | 84.8 MB | 20.9 MB | ✅ | **yes** |
 
-Three findings, in ascending order of how much they change the decision.
+Run-to-run variance on a shared runner is a few percent: an earlier run put A at 315.3 ms and D at
+172.4 ms. The gaps between configurations are an order of magnitude larger than that spread, so the
+comparisons hold; individual figures should be read as "about", not to the decimal.
+
+Four findings, in ascending order of how much they change the decision.
 
 **Self-contained buys nothing.** B is indistinguishable from A — 313.7 ms against 315.3 ms, with
 overlapping ranges — for 78 MB more on disk. Carrying the runtime is not what costs the time.
 
-**ReadyToRun nearly halves cold start.** 315 ms → 172 ms to serving, and 658 ms → 409 ms to exit: a
-45% cut on the metric that matters for a process launched once per client session. It costs 105 MB of
-publish size and about 4 MB of RSS. **This is the recommendation**, and R2R was measured precisely
-because ADR-0007 anticipated it might be: *"If the numbers say so, R2R is the recommendation and AOT
-stays closed."* The numbers say so.
+**ReadyToRun nearly halves cold start** — 324 ms → 177 ms to serving, 677 ms → 419 ms to exit, a 45%
+cut on the metric that matters for a process launched once per client session, for 105 MB of size and
+about 4 MB of RSS.
+
+**And the shim costs nothing, which is the finding that reframes the rest.** Configuration E — the
+tool as `dotnet tool install` actually produces it — lands at 323.5 ms against configuration A's
+324.1 ms, with overlapping ranges. The generated apphost and the muxer resolving a framework-dependent
+assembly were expected to add measurable overhead. They do not.
+
+So **~324 ms is what a real `talent-mcp` user pays**, and it is the only figure here describing an
+artifact anybody installs.
+
+**Nothing we ship is built the way the fast configuration is.** The `talent-mcp` package is
+`PackAsTool` with no RID — portable IL — and the Docker image publishes `--self-contained=false` with
+neither ReadyToRun nor trimming. Configurations B, C and D are measurement instruments, not delivery
+modes.
+
+That makes the R2R result true but, as it stands, unshippable where it matters. Cold start is a
+per-session cost for the **stdio** host, and that is precisely the artifact that cannot take R2R
+without publishing a package per RID and giving up single-package cross-platform install. The place
+R2R could be applied cheaply — the container image — is a long-lived server whose startup is paid once.
+Applying it there would be measuring theatre.
+
+This is recorded rather than resolved. Whether to ship RID-specific tool packages is a distribution
+decision with a real trade-off, not a performance one, and it is not F6's to make.
 
 **Trimming does not work here, and not by a margin.** Config C is absent from the table because it
 never served a request. It does not start:
@@ -313,9 +338,14 @@ than ADR-0002's silently empty tool set, and the gate would have caught either.
 
 ## Consequences
 
-- **ReadyToRun is the shipping recommendation for the stdio host**, on measured evidence: 45% off
-  cold start for publish size this project does not pay for over the wire, since the tool is
-  installed from NuGet as IL and the image is a separate artifact.
+- **ReadyToRun halves cold start but is not currently shippable for the artifact that needs it.**
+  The stdio host reaches users as a portable-IL `dotnet tool`; R2R would require RID-specific
+  packages. Recorded as an open distribution decision, not adopted. An earlier revision of this ADR
+  called R2R "the recommendation" without checking what the repository actually publishes — it
+  publishes neither R2R nor trimmed nor self-contained anything.
+- **~324 ms is the figure to quote**, from configuration E, the installed tool. The apphost shim and
+  muxer resolution cost nothing measurable over a bare publish directory, which was not the
+  expectation going in.
 - **Trimming stays off.** Not deferred pending tuning — the trimmed host does not start. Reversing
   that needs `JsonTypeInfo` metadata for every type appearing in a tool signature, which means a
   source-generated context covering the domain enums, and it must be re-verified against the

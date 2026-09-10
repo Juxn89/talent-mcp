@@ -3,6 +3,17 @@
     <RootNamespace>Talent.Mcp.Toolkit</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>Talent.Mcp.Toolkit</PackageId>
+    <!--
+      Local/default version only. CI derives the PUBLISHED version from the git tag
+      (publish.yml passes -p:Version), so a release puts both packages at the tag's version.
+      That is lockstep on purpose for now: one tag, one release.
+
+      This property still exists per project rather than only repo-wide so that the day the
+      library needs a major the tool has not earned, the divergence has somewhere to live —
+      it would need package-scoped tags in publish.yml to actually ship, which is the change
+      to make at that point and not before.
+    -->
+    <Version>1.0.5</Version>
     <Description>Domain-agnostic Model Context Protocol primitives for the 2026-07-28 revision: signed TTL-bounded handles, cache policies, a Postgres task store, and OpenTelemetry context extraction from _meta.</Description>
     <PackageProjectUrl>https://github.com/juxn89/talent-mcp</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -10,6 +21,23 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Library code: deadlocks in console/tool hosts if ConfigureAwait(false) is omitted. -->
     <NoWarn>$(NoWarn)</NoWarn>
+    <!--
+      The analyzers are armed, but this assembly deliberately does NOT declare IsTrimmable.
+      Deliberately, and not as an oversight: IsAotCompatible would set it, and that would publish a
+      trim-safety guarantee this package does not keep. HandleCodec.Mint/TryRead are still
+      reflection-based, and the narrow suppression at those two call sites hides the warning from a
+      CONSUMER trimming their own app, not just from our build — measured: without the pragma a
+      downstream trimmed publish reports 4 HandleCodec diagnostics, with it, zero. Claiming
+      trim-safety while silencing the one signal that contradicts it is the silent-failure mode
+      ADR-0002 exists to prevent.
+
+      So consumers get the honest assembly-level "not marked trim-compatible" warning, and we keep
+      the build-time gate that ADR-0002's consequences section asked for. Restore IsAotCompatible
+      when the HandleCodec JsonTypeInfo change lands and the suppression goes away. See ADR-0007.
+    -->
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
   </PropertyGroup>
   <!--
     NO ProjectReference to Talent.Domain. This ships to NuGet as a reusable protocol library, so no

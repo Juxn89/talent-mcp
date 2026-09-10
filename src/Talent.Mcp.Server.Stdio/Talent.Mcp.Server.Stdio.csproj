@@ -4,6 +4,8 @@
     <RootNamespace>Talent.Mcp.Server.Stdio</RootNamespace>
     <Description>stdio MCP host for the recruitment tool surface, published as the `talent-mcp` dotnet tool.</Description>
     <PackageId>Talent.Mcp.Server</PackageId>
+    <!-- Local/default version only; CI derives the published one from the tag. See the toolkit's note. -->
+    <Version>1.0.5</Version>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>talent-mcp</ToolCommandName>

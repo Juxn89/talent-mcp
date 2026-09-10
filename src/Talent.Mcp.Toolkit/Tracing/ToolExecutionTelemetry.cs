@@ -65,7 +65,7 @@ public static class ToolExecutionTelemetry
             return;
         }
 
-        var parameters = request.Params?.Deserialize<CallToolRequestParams>(McpJsonUtilities.DefaultOptions);
+        var parameters = request.Params?.Deserialize(McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolRequestParams>());
         var toolName = parameters?.Name ?? "unknown";
 
         var activity = McpTraceContext.StartServerActivity(
@@ -77,7 +77,9 @@ public static class ToolExecutionTelemetry
 
         if (activity is not null && parameters?.Arguments is { Count: > 0 } arguments)
         {
-            var serialized = JsonSerializer.Serialize(arguments, McpJsonUtilities.DefaultOptions);
+            var serialized = JsonSerializer.Serialize(
+                arguments,
+                McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, JsonElement>>());
             activity.SetTag("tool.input", Truncate(serialized, MaxInputTagLength));
         }
 
@@ -135,7 +137,7 @@ public static class ToolExecutionTelemetry
                     break;
 
                 case JsonRpcResponse response:
-                    var result = response.Result?.Deserialize<CallToolResult>(McpJsonUtilities.DefaultOptions);
+                    var result = response.Result?.Deserialize(McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
                     if (result?.IsError == true)
                     {
                         isError = true;

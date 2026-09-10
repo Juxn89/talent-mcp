@@ -281,7 +281,7 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
 
             upsert.Parameters.AddWithValue("taskId", taskId);
             upsert.Parameters.AddWithValue("requestId", requestId);
-            upsert.Parameters.AddWithValue("request", JsonSerializer.Serialize(request));
+            upsert.Parameters.AddWithValue("request", JsonSerializer.Serialize(request, McpTasksJsonContext.Default.InputRequest));
             upsert.Parameters.AddWithValue("now", now);
 
             await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -356,7 +356,7 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
 
                 insert.Parameters.AddWithValue("taskId", taskId);
                 insert.Parameters.AddWithValue("requestId", requestId);
-                insert.Parameters.AddWithValue("response", JsonSerializer.Serialize(response));
+                insert.Parameters.AddWithValue("response", JsonSerializer.Serialize(response, McpTasksJsonContext.Default.InputResponse));
                 insert.Parameters.AddWithValue("now", now);
 
                 await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -537,7 +537,7 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
 
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var request = JsonSerializer.Deserialize<InputRequest>(reader.GetString(1));
+            var request = JsonSerializer.Deserialize(reader.GetString(1), McpTasksJsonContext.Default.InputRequest);
             if (request is not null)
             {
                 requests[reader.GetString(0)] = request;
@@ -694,7 +694,7 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
                 return;
             }
 
-            var response = JsonSerializer.Deserialize<InputResponse>(json);
+            var response = JsonSerializer.Deserialize(json, McpTasksJsonContext.Default.InputResponse);
             if (response is not null)
             {
                 this.Raise(taskId, requestId, response);
@@ -775,7 +775,7 @@ public sealed class PostgresMcpTaskStore : IMcpTaskStore, IAsyncDisposable
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                var response = JsonSerializer.Deserialize<InputResponse>(reader.GetString(2));
+                var response = JsonSerializer.Deserialize(reader.GetString(2), McpTasksJsonContext.Default.InputResponse);
                 if (response is not null)
                 {
                     replay.Add((reader.GetString(0), reader.GetString(1), response));

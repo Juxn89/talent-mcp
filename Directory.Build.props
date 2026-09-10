@@ -10,7 +10,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
 
     <!-- Package metadata -->
-    <Version>1.0.0</Version>
+    <!--
+      Repo-wide default version. The two PUBLISHED packages (Talent.Mcp.Toolkit and
+      Talent.Mcp.Server) override it in their own .csproj, so the library can take a
+      breaking change without dragging the dotnet tool to a major it did not earn.
+
+      These properties must NOT go in Directory.Packages.props: that file is imported
+      *after* this one, so a value there silently wins. It did — it carried 1.0.1 while
+      this file said 1.0.0, which is how v1.0.2 through v1.0.5 all shipped stamped 1.0.1.
+      Corrected in F6.
+    -->
+    <Version>1.0.5</Version>
     <Authors>Juan Gómez</Authors>
     <PackageProjectUrl>https://github.com/Juxn89/talent-mcp</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

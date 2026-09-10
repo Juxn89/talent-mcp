@@ -16,14 +16,39 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.400'
+      # The tag is the single source of truth for the published version.
+      #
+      # It was not, and that cost four releases. dotnet pack took the version from the csproj, which
+      # is independent of the tag, so v1.0.2 through v1.0.5 all packed 1.0.1 (the value
+      # Directory.Packages.props was imposing at the time), NuGet answered 409, --skip-duplicate
+      # swallowed it, and every one of those runs went green having published nothing. Only 1.0.1
+      # ever reached nuget.org.
+      #
+      # Deriving it here makes that divergence structurally impossible rather than something a
+      # release checklist has to remember.
+      - name: Resolve version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not carry a SemVer version (expected vMAJOR.MINOR.PATCH[-prerelease])."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
       - name: Restore
         run: dotnet restore
+      # -p:Version goes to the BUILD as well as to pack. With --no-build, passing it only to pack
+      # produces a .nupkg labelled with the tag version wrapping an assembly stamped with the
+      # csproj's — the same class of silent mismatch this step exists to remove.
       - name: Build Release
-        run: dotnet build -c Release --no-restore
+        run: dotnet build -c Release --no-restore -p:Version=${{ steps.version.outputs.version }}
       - name: Pack Talent.Mcp.Server (dotnet tool)
-        run: dotnet pack src/Talent.Mcp.Server.Stdio -c Release --no-build --output ./nupkg
+        run: dotnet pack src/Talent.Mcp.Server.Stdio -c Release --no-build --output ./nupkg -p:Version=${{ steps.version.outputs.version }}
       - name: Pack Talent.Mcp.Toolkit (library)
-        run: dotnet pack src/Talent.Mcp.Toolkit -c Release --no-build --output ./nupkg
+        run: dotnet pack src/Talent.Mcp.Toolkit -c Release --no-build --output ./nupkg -p:Version=${{ steps.version.outputs.version }}
+      - name: Show what will be pushed
+        run: ls -l ./nupkg
       - name: Push to NuGet (Trusted Publishing)
         run: |
           for pkg in ./nupkg/*.nupkg; do

@@ -357,7 +357,8 @@ docker compose up -d                            # Postgres, Keycloak, OTel, Jaeg
 dotnet test tests/Talent.Architecture.Tests     # regla de dependencia (no necesita el compose)
 dotnet test tests/Talent.Domain.Tests           # dominio puro, sin Docker
 dotnet test                                     # todo: + tools, conformidad y E2E
-dotnet run --project bench                      # BenchmarkDotNet + cold start
+dotnet run --project bench/Talent.Mcp.Bench -c Release   # BenchmarkDotNet sobre el dominio puro
+./scripts/measure-startup.sh                            # cold start y memoria (necesita Postgres)
 ```
 
 Comprobaciones manuales:

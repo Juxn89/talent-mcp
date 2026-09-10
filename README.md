@@ -1,72 +1,147 @@
-# Talent.Mcp — MCP Server for Recruitment Domain
+# Talent.Mcp
 
-An MCP (Model Context Protocol) server in C# for the recruitment domain. Exposes typed tools for job search, candidate-fit scoring, and skill extraction, built against the **2026-07-28 Model Context Protocol revision**.
+[![CI](https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml)
+[![NuGet — Talent.Mcp.Toolkit](https://img.shields.io/nuget/v/Talent.Mcp.Toolkit?label=Talent.Mcp.Toolkit)](https://www.nuget.org/packages/Talent.Mcp.Toolkit)
+[![NuGet — talent-mcp](https://img.shields.io/nuget/v/Talent.Mcp.Server?label=talent-mcp%20tool)](https://www.nuget.org/packages/Talent.Mcp.Server)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 
-- **Protocol:** MCP 2026-07-28 with stateless Streamable HTTP
-- **Auth:** OAuth 2.1 + PKCE S256
-- **Database:** PostgreSQL + Entity Framework Core
-- **Published as:** NuGet package (`Talent.Mcp.Toolkit`) + dotnet tool (`talent-mcp`) + Docker image
+An MCP server in C# for the recruitment domain, built against the **2026-07-28 Model Context
+Protocol revision** — the one that removed sessions. Six typed tools over stateless Streamable HTTP
+with OAuth 2.1 + PKCE, and the same six over stdio as a `dotnet tool`.
+
+**No tool calls an LLM.** Scoring and skill normalization are deterministic pure functions, so the
+server runs with no API keys, at zero cost, and its results are reproducible enough to be a test
+oracle.
+
+```bash
+git clone https://github.com/Juxn89/talent-mcp.git && cd talent-mcp
+docker compose -f deploy/compose.yaml up -d --wait
+
+# The hosts do not migrate the domain schema at startup — only the task store's own tables.
+dotnet ef database update --project src/Talent.Infrastructure --startup-project src/Talent.Mcp.Server
+
+dotnet run --project src/Talent.Mcp.Server
+```
+
+That brings up Postgres, Keycloak with the realm imported, and the full OpenTelemetry stack:
+
+| | |
+|---|---|
+| Keycloak | <http://localhost:8080> — `admin` / `admin` |
+| Realm discovery | <http://localhost:8080/realms/talent/.well-known/openid-configuration> |
+| Grafana | <http://localhost:3000> — dashboards provisioned from `deploy/grafana/` |
+| Jaeger | <http://localhost:16686> |
+| Prometheus | <http://localhost:9090> |
+| Loki | <http://localhost:3100> |
+| OTLP intake | `localhost:4317` (gRPC), `localhost:4318` (HTTP) |
+| Postgres | `localhost:5432` — `talent` / `talent`, databases `talent` and `keycloak` |
+| Keycloak realm user | `recruiter` / `recruiter` |
+
+Every credential above is a dev-only default and every one is overridable from the environment.
+Image tags are pinned to exact patch versions, because `latest` makes a green CI run
+unreproducible three weeks later.
+
+> **The domain tables start empty.** `deploy/postgres/init/` only creates Keycloak's database, and
+> `TalentSeeder` — which does migrate and seed realistic jobs and candidates — is currently wired
+> into the test fixtures only (`Talent.Mcp.E2E/RealServerFixture`, `Talent.Infrastructure.Tests`).
+> So `search_jobs` against a freshly composed stack returns nothing until you seed it yourself.
+> The plan calls for `docker compose up` to include seeds; closing that gap needs a seeding entry
+> point on the hosts and is tracked as follow-up work rather than quietly implied here.
+
+```bash
+docker compose -f deploy/compose.yaml down     # add -v to drop the volume and force a realm re-import
+```
+
+The MCP server is deliberately **not** a compose service: the conformance and E2E suites build it
+in-process so they can assert against the same composition the tests exercise.
 
 ---
 
-## Quick Start
+## The tools
 
-### Prerequisites
+Each one exists to demonstrate a specific capability of the revision. None is decorative.
 
-- .NET 10.0+
-- Docker & Docker Compose
-- PostgreSQL 15+ (via compose)
-- Keycloak 25.0+ (via compose)
-
-### Development
-
-```bash
-# Clone and setup
-git clone https://github.com/Juxn89/talent-mcp.git
-cd talent-mcp
-dotnet restore
-
-# Start infrastructure
-docker compose -f deploy/compose.yaml up -d
-
-# Run tests
-dotnet test
-
-# Build the API
-dotnet build
-```
-
-### Infrastructure
-
-The `deploy/compose.yaml` stack, and where each piece lands:
-
-| Service | Status | Purpose |
+| Tool | Scope | What it demonstrates |
 |---|---|---|
-| **PostgreSQL** 18.6 | ✅ live | Domain data (jobs, candidates, skills) + Keycloak's own database |
-| **Keycloak** 26.7.2 | ✅ live | OAuth 2.1 / OIDC provider, realm imported from `deploy/keycloak/realm.json` |
-| **Talent.Mcp.Server** | F2 | Stateless Streamable HTTP host |
-| **Observability** | F4 | OTel Collector, Jaeger, Prometheus, Grafana |
+| `search_jobs` | `talent.jobs.read` | Pagination by **signed handle** — the pattern that replaces sessions |
+| `get_job` | `talent.jobs.read` | Cacheable result with `ttlMs`/`cacheScope`, plus region routing promoted to a header via `[McpHeader("Region")]` |
+| `extract_skills` | `talent.jobs.read` | Taxonomy normalization, deterministic and LLM-free |
+| `score_candidate_fit` | `talent.candidates.read` | Explainable score with a per-component breakdown |
+| `reject_candidate` | `talent.candidates.reject` | A destructive operation gated on **MRTR** confirmation, including the degraded path |
+| `bulk_score_shortlist` | `talent.candidates.write` | Long-running work on the **Tasks extension**, backed by Postgres so it survives a restart |
+
+Scopes are enforced **per tool** — read, write and destructive are not interchangeable — and the
+E2E suite asserts that a token missing the required scope is denied.
+
+---
+
+## The flow, end to end
+
+What makes this revision different, in the order you hit it. Request bodies below are the real wire
+shapes; run the commands against your own stack for live values.
+
+**1. Get a token.** Every tool call needs one, and the scope has to match the tool.
 
 ```bash
-docker compose -f deploy/compose.yaml up -d
-# Keycloak admin:  http://localhost:8080          (admin / admin)
-# Realm discovery: http://localhost:8080/realms/talent/.well-known/openid-configuration
-# Keycloak health: http://localhost:9000/health/ready
-# Postgres:        localhost:5432                 (talent / talent, databases: talent, keycloak)
-# Seed user:       recruiter / recruiter
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/talent/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=talent-mcp-client \
+  -d username=recruiter -d password=recruiter \
+  -d scope='talent.jobs.read talent.candidates.read' | jq -r .access_token)
 ```
 
-All credentials are dev-only defaults and every one is overridable from the environment. Image tags
-are pinned to exact patch versions so a green CI run stays reproducible.
+**2. Search, and page with a handle — not a session.** There is no `Mcp-Session-Id` and no
+`initialize`. State between calls travels as a signed, TTL-bounded handle passed back as an ordinary
+tool argument.
 
-Tear down with `docker compose -f deploy/compose.yaml down`; add `-v` to drop the Postgres volume,
-which is also how you force a realm re-import.
+```bash
+curl -s -X POST http://localhost:5000/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' -H 'Mcp-Name: search_jobs' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+        "name":"search_jobs",
+        "arguments":{"query":"dotnet","pageSize":2},
+        "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",
+                 "io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+The result carries `nextPageHandle`, which you pass straight back as an argument to get page two:
+
+```jsonc
+{ "jobs": [ /* … */ ], "totalMatches": 7, "hasMore": true,
+  "nextPageHandle": "AAAAAGqQKRi4yPyKLkvv9…" }
+```
+
+> `hasMore` is an explicit field on purpose. The serializer omits nulls, so on the last page
+> `nextPageHandle` is **absent**, not `null` — a client that treats "no more data" as the absence of
+> another field is reading a serialization detail as a protocol signal.
+
+**3. Reject a candidate — and get told no.** The first call does not delete anything. It raises
+`InputRequiredException`, which reaches the client as an `input_required` result carrying a
+`requestState` handle:
+
+```bash
+# … "name":"reject_candidate", "arguments":{"candidateId":"…","reason":"Withdrew"}
+```
+
+The client re-sends the *original* request with `inputResponses` filled in, and only then does the
+rejection happen. That round trip is MRTR, and it is the only mechanism the revision leaves for a
+server to ask a question — server-initiated requests are gone.
+
+If the client cannot elicit, the tool takes a degraded path instead of failing. The guard is
+`IsMrtrSupported && ClientCapabilities?.Elicitation is not null`: the first asks whether the
+mechanism exists, the second whether anyone is there to answer.
+
+**4. Watch it in Jaeger.** Client context arrives in `_meta` as `traceparent`/`tracestate`/`baggage`,
+so one trace spans client → server → Postgres. Open <http://localhost:16686> and pick
+`talent-mcp-server`.
 
 ---
 
 ## Architecture
 
-**Clean Architecture** with strict dependency rule:
+Clean Architecture, with the dependency rule verified in CI rather than agreed to in a document.
 
 ```
 Presentation ──┐
@@ -76,223 +151,164 @@ Infrastructure ┘
 Dependencies point inward only. Domain references nothing.
 ```
 
-- **`Talent.Domain`** — Pure business rules, entities, enums. Zero framework dependencies.
-- **`Talent.Application`** — UseCases and ports (interfaces). Depends only on Domain.
-- **`Talent.Infrastructure`** — Adapters (EF Core, Keycloak, OTel). Implements ports.
-- **`Talent.Mcp.Server`** — ASP.NET Core host. Streamable HTTP transport.
-- **`Talent.Mcp.Server.Stdio`** — Stdio transport. Published as dotnet tool.
-- **`Talent.Mcp.Toolkit`** — Technical library (protocol primitives). Published to NuGet.
+| Project | Role |
+|---|---|
+| `Talent.Domain` | Entities and the pure scoring and normalization functions. Zero framework dependencies |
+| `Talent.Application` | Use cases and ports (`IJobRepository`, `ICandidateRepository`, `IHandleCodec`) |
+| `Talent.Infrastructure` | Adapters: EF Core/Npgsql, migrations, seeds, Keycloak, OTel exporters |
+| `Talent.Mcp.Tools` | The six tool types and their wire contracts, shared verbatim by both hosts |
+| `Talent.Mcp.Server` | ASP.NET Core Streamable HTTP host → the GHCR image |
+| `Talent.Mcp.Server.Stdio` | stdio host → the `talent-mcp` dotnet tool |
+| `Talent.Mcp.Toolkit` | Domain-agnostic protocol primitives → NuGet |
 
-Verified by `ArchUnitNET` on every build.
-
----
-
-## Testing
-
-All five test levels required for PR merge:
-
-```bash
-# Start the stack (required for infrastructure and conformance tests)
-docker compose -f deploy/compose.yaml up -d
-
-# Run all tests
-dotnet test
-
-# Or individual levels:
-dotnet test tests/Talent.Architecture.Tests    # Dependency rule
-dotnet test tests/Talent.Domain.Tests           # Pure functions (no Docker)
-dotnet test tests/Talent.Infrastructure.Tests   # EF Core / Postgres mapping
-dotnet test tests/Talent.Mcp.Tests              # Tool contracts
-dotnet test tests/Talent.Mcp.Conformance        # Protocol spec
-dotnet test tests/Talent.Mcp.E2E                # Full stack
-```
-
-CI enforces all five. Local development can skip the infrastructure tests if Docker is unavailable, but CI will catch issues.
-
----
-
-## Publishing
-
-### dotnet tool (`talent-mcp`)
-
-```bash
-# Installed globally
-dotnet tool install --global Talent.Mcp.Server
-
-# Run directly
-talent-mcp
-
-# Use in Claude Code/Desktop settings
-```
-
-### NuGet Packages
-
-- **`Talent.Mcp.Server`** — dotnet tool with stdio MCP host
-- **`Talent.Mcp.Toolkit`** — Reusable protocol primitives (handles, tasks, cache) for downstream projects
-
-### Docker Image
-
-```bash
-# Build locally
-docker build -t talent-mcp:latest .
-
-# Run
-docker run -p 5000:5000 talent-mcp:latest
-
-# From GitHub Container Registry
-docker pull ghcr.io/juxn89/talent-mcp:latest
-docker run -p 5000:5000 ghcr.io/juxn89/talent-mcp:latest
-```
-
-### Release workflow
-
-Tag a version to trigger automatic publishing:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-GitHub Actions will:
-1. Run all CI tests ✅
-2. Publish `Talent.Mcp.Server` to NuGet
-3. Publish `Talent.Mcp.Toolkit` to NuGet
-4. Build and push Docker image to `ghcr.io/juxn89/talent-mcp`
-5. Create a GitHub Release
-
-**Requires secrets:**
-- `NUGET_API_KEY` — NuGet publish token
-- `GHCR_PAT` — GitHub Personal Access Token with `write:packages` permission
-
----
-
-## Installation & Configuration
-
-See detailed guides:
-- **[INSTALLATION.md](./docs/INSTALLATION.md)** — All setup paths (Docker, tool, local dev)
-- **[CLAUDE_INTEGRATION.md](./docs/CLAUDE_INTEGRATION.md)** — Claude Code & Claude Desktop setup
-- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** — Local development workflow
-
----
-
-## Tools (MCP Services)
-
-| Tool | Input | Output | Required scope | Protocol capability exercised |
-|---|---|---|---|---|
-| `search_jobs` | Query, filters (location, salary, skills), page handle | Jobs + next signed handle | `talent.jobs.read` | Handle-based pagination (sessions are gone) |
-| `get_job` | Job ID, `Region` header | Job + `ttlMs`/`cacheScope` | `talent.jobs.read` | Cacheable result + `[McpHeader]` promotion |
-| `extract_skills` | Text (CV, job description) | Normalized skills + confidence | `talent.jobs.read` | Deterministic taxonomy normalization, no LLM |
-| `score_candidate_fit` | Candidate ID, Job ID | Score (0–100) + per-component breakdown | `talent.candidates.read` | Explainable deterministic scoring |
-| `reject_candidate` | Candidate ID, reason | Confirmation | `talent.candidates.reject` | MRTR — destructive op requiring `inputResponses` |
-| `bulk_score_shortlist` | Shortlist ID | Task handle | `talent.candidates.write` | Tasks extension with Postgres store |
-
-All tools require OAuth 2.1 authorization (Bearer token) and enforce their **own** scope — read,
-write and destructive are not interchangeable. No tool calls an LLM: the server runs with no API
-keys and at zero cost.
+`Talent.Mcp.Tools` references neither `Talent.Infrastructure` nor `ModelContextProtocol.AspNetCore`,
+which is what lets the stdio host serve the identical surface without dragging the web stack into a
+process where cold start is the whole point. `Talent.Architecture.Tests` fails the build if that
+changes.
 
 ---
 
 ## Testing
 
-Five-level pyramid, all gates block merge:
+Five levels with distinct jobs. **All five gate the merge** — they do not merely report.
 
 ```bash
-# 1. Architecture (no Docker)
-dotnet test tests/Talent.Architecture.Tests
+# No Docker needed
+dotnet test tests/Talent.Architecture.Tests    # the dependency rule
+dotnet test tests/Talent.Domain.Tests          # pure scoring and normalization
+dotnet test tests/Talent.Mcp.Tests             # tools over the in-memory transport
 
-# 2. Domain (pure, no Docker)
-dotnet test tests/Talent.Domain.Tests
+# Needs the stack
+docker compose -f deploy/compose.yaml up -d --wait
+dotnet test tests/Talent.Infrastructure.Tests  # EF mapping against real Postgres
+dotnet test tests/Talent.Mcp.Conformance       # protocol conformance for 2026-07-28
+dotnet test tests/Talent.Mcp.E2E               # real client → HTTP → OAuth → Postgres
 
-# 3. Tools over the in-memory transport
-dotnet test tests/Talent.Mcp.Tests
-
-# 4. Protocol Conformance (Testcontainers)
-dotnet test tests/Talent.Mcp.Conformance
-
-# 5. End-to-end (real compose)
-dotnet test tests/Talent.Mcp.E2E
+dotnet test                                    # everything
 ```
 
-Or run all:
-```bash
-dotnet test
-```
+The conformance suite carries the most signal. It asserts that `tools/list` returns all six tools
+**by name** — not merely that the server starts. A tool set silently emptied by trimming answers
+`-32601` with no crash and no error log, which is this project's worst failure mode and the reason
+tools are registered explicitly rather than by assembly scan.
 
 ---
 
-## Publishing
-
-### NuGet Package
+## Benchmarks
 
 ```bash
-dotnet pack src/Talent.Mcp.Toolkit -c Release
-# → bin/Release/Talent.Mcp.Toolkit.*.nupkg
-
-# Then (CI does this automatically on tag):
-dotnet nuget push bin/Release/Talent.Mcp.Toolkit.*.nupkg \
-  -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+dotnet run --project bench/Talent.Mcp.Bench -c Release
 ```
 
-### Docker Image
+Both targets are pure functions over `Talent.Domain` — no repository, no `DbContext`, no Docker —
+which is what makes the numbers reproducible rather than a description of one machine's Postgres.
 
-```bash
-docker build -t ghcr.io/juxn89/talent-mcp:latest .
-docker push ghcr.io/juxn89/talent-mcp:latest
-```
+`CandidateFitScorer.Score` is measured for a single pair and across a 500-candidate shortlist, the
+ceiling `bulk_score_shortlist` works to. `SkillNormalizer.Extract` is measured across three CV
+lengths, because its cost is proportional to alias count times text length rather than flat.
 
-### As a dotnet tool
+Cold start and memory for the stdio host are measured separately, in CI rather than on a laptop, by
+the `startup-benchmark` job:
 
-`Talent.Mcp.Toolkit` is a **library**, not a tool. The installable tool is `Talent.Mcp.Server`,
-which exposes the `talent-mcp` command (stdio transport, for Claude Code / Claude Desktop):
+| Configuration | Time to serving | Peak RSS | Publish size |
+|---|---:|---:|---:|
+| Framework-dependent (JIT) | 315 ms | 84.7 MB | 12.5 MB |
+| Self-contained, trimmed | **does not start** | — | 39.9 MB |
+| Self-contained, ReadyToRun | **172 ms** | 89.0 MB | 105.4 MB |
 
-```bash
-dotnet tool install --global Talent.Mcp.Server
-talent-mcp
-```
+ReadyToRun nearly halves the time to a served request, which is the metric that matters for a process
+a client launches once per session. Trimming is not merely slower — the host throws at startup,
+because the SDK builds tool schemas by reflecting over parameter types and a domain enum has no
+metadata under trimming. The trim analyzer never warned about it; it reported two unrelated EF Core
+diagnostics. [ADR-0007](./docs/adr/0007-trim-clean-over-native-aot.md) has the stack trace and what
+it costs to reverse.
+
+Results and what they mean are in
+[`docs/verification/domain-benchmarks.md`](./docs/verification/domain-benchmarks.md). The short
+version: scoring a full 500-candidate shortlist costs about a millisecond, so whatever makes
+`bulk_score_shortlist` long-running is the data access around it, not the scorer. Allocation figures
+there are byte-identical across runs; the wall-clock ones were taken on a throttled laptop and are
+reported as orders of magnitude, not as measurements.
 
 ---
 
 ## Configuration
 
-Environment variables (or `appsettings.json`):
+Settings bind from `appsettings.json`, environment variables, or any other `IConfiguration` source.
+Environment variables use `__` for the `:` separator.
 
-| Variable | Default | Purpose |
+| Setting | Environment variable | Purpose |
 |---|---|---|
-| `ASPNETCORE_URLS` | `http://localhost:5000` | API listen address |
-| `DATABASE_CONNECTION_STRING` | `Host=localhost;Database=talent;Username=talent;Password=talent` | PostgreSQL connection (Npgsql keyword format, not a URI) |
-| `KEYCLOAK_URL` | `http://localhost:8080` | Keycloak issuer |
-| `KEYCLOAK_CLIENT_ID` | `talent-mcp-server` | OAuth client |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTel Collector |
+| `ConnectionStrings:Talent` | `ConnectionStrings__Talent` | Postgres, in Npgsql keyword format (not a URI) |
+| `Talent:HandleSigningKey` | `Talent__HandleSigningKey` | Base64, **at least 32 bytes**. Signs pagination and confirmation handles |
+| `Talent:Auth:Authority` | `Talent__Auth__Authority` | OIDC issuer, e.g. `http://localhost:8080/realms/talent` |
+| `Talent:Otel:Endpoint` | `Talent__Otel__Endpoint` | OTLP collector, e.g. `http://localhost:4317` |
+| `Talent:DefaultPageSize` | `Talent__DefaultPageSize` | Default page size (20) |
+| `Talent:MaxPageSize` | `Talent__MaxPageSize` | Page size ceiling (100) |
 
-See `src/Talent.Mcp.Server/appsettings.json` for full defaults.
+The connection string, signing key and issuer are **not** in `appsettings.json` on purpose:
+production supplies all three from the environment and the host refuses to start without them. Dev
+values live in `appsettings.Development.json`, where the signing key is a labelled placeholder — it
+decodes to an ASCII string. Never deploy with it; anyone who can read the file can forge a handle.
+
+The stdio host needs a connection string too. It is not a thin client: it reaches Postgres through
+the same adapters as the HTTP host, so only `extract_skills` works without one.
 
 ---
 
-## Documentation
+## Install
 
-- **[Plan](./docs/plans/a2-talent-mcp.md)** — Full architectural plan (source of truth for scope and phases)
-- **[AGENTS.md](./AGENTS.md)** — AI agent guidelines for this repo
-- **ADRs** — Architecture decisions in `/docs/adr/`
+**As a `dotnet tool` (stdio, for Claude Code and Claude Desktop):**
+
+```bash
+dotnet tool install --global Talent.Mcp.Server   # provides the `talent-mcp` command
+talent-mcp
+```
+
+Note the package id is `Talent.Mcp.Server` and the command is `talent-mcp`.
+[`Talent.Mcp.Toolkit`](https://www.nuget.org/packages/Talent.Mcp.Toolkit) is a **library**, not a
+tool — it is the reusable protocol layer: signed handles, a Postgres `IMcpTaskStore`, cache policies,
+and OTel context extraction from `_meta`.
+
+See [docs/CLAUDE_INTEGRATION.md](./docs/CLAUDE_INTEGRATION.md) for client configuration,
+[docs/INSTALLATION.md](./docs/INSTALLATION.md) for every setup path, and
+[docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) for the local workflow.
+
+**As a container:**
+
+```bash
+docker run -p 5000:5000 ghcr.io/juxn89/talent-mcp:latest
+```
+
+**Releasing** is tag-driven — `git tag v1.2.3 && git push origin v1.2.3` publishes both packages, the
+image, and a GitHub release. **The tag sets the version**: CI passes it to `dotnet build` and
+`dotnet pack`, so the package, the assembly inside it and the tag cannot drift apart. Both packages
+go out at the tag's version; splitting them would need package-scoped tags, which is a change to make
+when the library first needs a major the tool has not earned.
+
+---
+
+## Decisions
+
+The reasoning, including what was tried and rejected:
+
+- [ADR-0001 · Streamable HTTP session mode](./docs/adr/0001-streamable-http-session-mode.md) — why `Stateless` is set explicitly
+- [ADR-0002 · Native AOT and explicit tool registration](./docs/adr/0002-native-aot-and-explicit-tool-registration.md) — trimming silently empties a reflection-discovered tool set, measured
+- [ADR-0003 · Cross-node task input responses](./docs/adr/0003-cross-node-task-input-responses.md) — `LISTEN`/`NOTIFY` plus a sweep, because a stateless server answers the follow-up on a different node
+- [ADR-0004 · One tool surface, two hosts](./docs/adr/0004-shared-tool-surface-across-both-hosts.md) — and why the stdio host takes EF Core deliberately
+- [ADR-0005 · Pre-registration, not DCR or CIMD](./docs/adr/0005-client-registration-pre-registration-not-dcr-or-cimd.md)
+- [ADR-0006 · Observability instrumentation](./docs/adr/0006-observability-instrumentation.md) — why `AddCallToolFilter` never fires for a registered tool
+- [ADR-0007 · Trim-clean over Native AOT](./docs/adr/0007-trim-clean-over-native-aot.md)
+
+Dated verification records live in [`docs/verification/`](./docs/verification/) — what was checked,
+against which source, on what date. Grep there before re-verifying something.
+
+The full plan, which is the source of truth for scope and phases, is
+[`docs/plans/a2-talent-mcp.md`](./docs/plans/a2-talent-mcp.md). Contributor and agent guidelines are
+in [`AGENTS.md`](./AGENTS.md). Release history is in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
 ## License
 
-Apache License 2.0 — See [LICENSE](./LICENSE)
-
----
-
-## Next Steps
-
-1. **Setup:**
-   ```bash
-   docker compose -f deploy/compose.yaml up -d
-   dotnet restore
-   dotnet build
-   ```
-
-2. **Implement Phase F1** (Domain, Application, Architecture Tests)
-
-3. **Iterate:** Each phase is mergeable and testable independently.
-
-See the [plan](./docs/plans/a2-talent-mcp.md#fases) for details.
+[Apache 2.0](./LICENSE)

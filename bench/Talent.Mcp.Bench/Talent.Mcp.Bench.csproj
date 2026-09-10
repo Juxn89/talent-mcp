@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Talent.Mcp.Bench</RootNamespace>
+    <Description>BenchmarkDotNet harness for the deterministic domain functions: candidate-fit scoring and skill extraction.</Description>
+    <!--
+      BenchmarkDotNet requires Release; running under Debug aborts with a validation error rather
+      than reporting misleading numbers. Nothing here needs the server or a database: every target
+      is a pure function over Talent.Domain, which is the property that lets these run without
+      Docker and lets A1 reuse the same functions for its eval harness.
+    -->
+    <AssemblyName>Talent.Mcp.Bench</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Talent.Domain/Talent.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+</Project>

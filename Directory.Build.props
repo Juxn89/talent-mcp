@@ -34,6 +34,24 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
+    <!--
+      Publishing quality, for the two packages that ship. Each of these is baked into the .nupkg, so
+      adding one later costs a version bump that exists only to fix metadata.
+
+      PublishRepositoryUrl + EmbedUntrackedSources enable SourceLink, which since .NET 8 is part of
+      the SDK rather than a separate package. With the symbol package that follows, a consumer can
+      step from their own code into this library's source at the exact commit.
+
+      IncludeSymbols with SymbolPackageFormat=snupkg produces the companion symbol package NuGet.org
+      accepts. `dotnet nuget push` uploads a .snupkg sitting beside its .nupkg automatically, so
+      publish.yml needs no change.
+    -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageReleaseNotes>https://github.com/Juxn89/talent-mcp/blob/main/CHANGELOG.md</PackageReleaseNotes>
+
     <!-- Deterministic builds -->
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>

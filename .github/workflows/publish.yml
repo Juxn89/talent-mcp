@@ -51,7 +51,14 @@ jobs:
         run: ls -l ./nupkg
       - name: Push to NuGet (Trusted Publishing)
         run: |
-          for pkg in ./nupkg/*.nupkg; do
+          # Globs .nupkg and .snupkg both, and in that order -- a symbol package is rejected if its
+          # main package is not on the server yet, and 'n' sorts before 's'. dotnet nuget push is
+          # documented to push a companion .snupkg automatically, but relying on that would mean
+          # symbols silently never publishing if it does not, which is the failure mode this
+          # repository spends most of its comments avoiding. Explicit costs nothing;
+          # --skip-duplicate absorbs the second attempt if the companion push already happened.
+          for pkg in ./nupkg/*.nupkg ./nupkg/*.snupkg; do
+            [ -e "$pkg" ] || continue
             dotnet nuget push "$pkg" \
               -k ${{ secrets.NUGET_API_KEY }} \
               -s https://api.nuget.org/v3/index.json \

@@ -4,6 +4,7 @@
     <RootNamespace>Talent.Mcp.Server.Stdio</RootNamespace>
     <Description>stdio MCP host for the recruitment tool surface, published as the `talent-mcp` dotnet tool.</Description>
     <PackageId>Talent.Mcp.Server</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Local/default version only; CI derives the published one from the tag. See the toolkit's note. -->
     <Version>1.0.5</Version>
     <IsPackable>true</IsPackable>
@@ -30,5 +31,8 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

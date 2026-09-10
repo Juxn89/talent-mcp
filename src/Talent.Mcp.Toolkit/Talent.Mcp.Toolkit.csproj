@@ -3,6 +3,16 @@
     <RootNamespace>Talent.Mcp.Toolkit</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>Talent.Mcp.Toolkit</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!--
+      Compares this package's public API against the last published version at pack time and fails
+      the build on an unintended break. Added because F6 verified "no breaking change" by diffing XML
+      documentation by hand, which was correct but is not a method that scales past the person who
+      remembers to run it. The baseline is 1.0.1 because that is the only version that ever reached
+      nuget.org; v1.0.2 through v1.0.5 exist as tags but published nothing.
+    -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>1.0.1</PackageValidationBaselineVersion>
     <!--
       Local/default version only. CI derives the PUBLISHED version from the git tag
       (publish.yml passes -p:Version), so a release puts both packages at the tag's version.
@@ -42,5 +52,8 @@
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

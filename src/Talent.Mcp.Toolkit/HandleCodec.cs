@@ -2,8 +2,10 @@ namespace Talent.Mcp.Toolkit;
 
 using System.Buffers.Binary;
 using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 /// <summary>
 /// Mints and verifies opaque, signed, TTL-bounded handles.
@@ -66,7 +68,46 @@ public sealed class HandleCodec : IDisposable
         this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    /// <summary>Mints a signed handle carrying <paramref name="payload"/>.</summary>
+    /// <summary>
+    /// Mints a signed handle carrying <paramref name="payload"/>, serialized through a
+    /// source-generated contract.
+    /// <para>
+    /// Prefer this over the overload without <paramref name="payloadTypeInfo"/>: that one serializes
+    /// reflectively, which trimming and AOT cannot see through. See
+    /// <see href="../../docs/adr/0007-trim-clean-over-native-aot.md">ADR-0007</see>.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TPayload">Payload type.</typeparam>
+    /// <param name="payload">State to carry across calls.</param>
+    /// <param name="payloadTypeInfo">
+    /// The payload's serialization contract. A <c>JsonTypeInfo</c> rather than a
+    /// <c>JsonSerializerContext</c> on purpose: it is the shape the trim-safe
+    /// <see cref="JsonSerializer"/> overloads take directly, and a missing
+    /// <c>[JsonSerializable]</c> becomes a compile error at the call site instead of a null
+    /// dereference at runtime.
+    /// </param>
+    /// <param name="timeToLive">How long the handle stays valid. Must be positive.</param>
+    /// <returns>An opaque handle safe to hand to a client.</returns>
+    /// <exception cref="ArgumentNullException">An argument was <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The time-to-live was not positive.</exception>
+    /// <exception cref="ObjectDisposedException">The codec was disposed.</exception>
+    public string Mint<TPayload>(
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadTypeInfo,
+        TimeSpan timeToLive)
+        where TPayload : notnull
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(payloadTypeInfo);
+        this.ValidateMintable(timeToLive);
+
+        return this.MintCore<TPayload>(
+            JsonSerializer.SerializeToUtf8Bytes(payload, payloadTypeInfo), timeToLive);
+    }
+
+    /// <summary>
+    /// Mints a signed handle, serializing <paramref name="payload"/> reflectively.
+    /// </summary>
     /// <typeparam name="TPayload">Payload type.</typeparam>
     /// <param name="payload">State to carry across calls.</param>
     /// <param name="timeToLive">How long the handle stays valid. Must be positive.</param>
@@ -74,10 +115,27 @@ public sealed class HandleCodec : IDisposable
     /// <exception cref="ArgumentNullException">The payload was <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The time-to-live was not positive.</exception>
     /// <exception cref="ObjectDisposedException">The codec was disposed.</exception>
+    [Obsolete("Use the overload taking a JsonTypeInfo<TPayload>. This one serializes reflectively, "
+        + "which a trimmed or AOT-compiled host cannot support. See ADR-0007.")]
+    [RequiresUnreferencedCode("Serializes TPayload reflectively; trimming may remove members it needs.")]
+    [RequiresDynamicCode("Serializes TPayload reflectively; AOT cannot generate the required code.")]
     public string Mint<TPayload>(TPayload payload, TimeSpan timeToLive)
         where TPayload : notnull
     {
         ArgumentNullException.ThrowIfNull(payload);
+        this.ValidateMintable(timeToLive);
+
+        // The annotations above are what make this honest rather than hidden. An earlier revision
+        // suppressed IL2026/IL3050 here with a #pragma, which silenced the warning for CONSUMERS
+        // trimming their own applications too, not just for this build -- measured: 4 diagnostics
+        // without it, 0 with. Annotating instead pushes the warning to whoever actually calls this,
+        // which is where the decision belongs.
+        return this.MintCore<TPayload>(
+            JsonSerializer.SerializeToUtf8Bytes(payload, PayloadJsonOptions), timeToLive);
+    }
+
+    private void ValidateMintable(TimeSpan timeToLive)
+    {
         ObjectDisposedException.ThrowIf(this.disposed, this);
 
         if (timeToLive <= TimeSpan.Zero)
@@ -85,23 +143,11 @@ public sealed class HandleCodec : IDisposable
             throw new ArgumentOutOfRangeException(
                 nameof(timeToLive), timeToLive, "A handle's time-to-live must be positive.");
         }
+    }
 
+    private string MintCore<TPayload>(byte[] payloadBytes, TimeSpan timeToLive)
+    {
         var expiresAt = this.timeProvider.GetUtcNow().Add(timeToLive).ToUnixTimeSeconds();
-        // Deliberately still reflection-based, and the only two such sites left in this assembly.
-        // Mint/TryRead are open generics over payload types the CONSUMER owns, and this assembly
-        // ships to NuGet — it cannot enumerate them, which is exactly what a JsonSerializerContext
-        // requires. The elegant fix (a payload interface exposing its own static JsonTypeInfo) is
-        // blocked by the dependency rule, not by taste: JobSearchCursor lives in Talent.Application,
-        // which is forbidden from referencing this assembly — that prohibition is the whole reason
-        // the IHandleCodec port exists. The remaining option, threading a JsonTypeInfo<TPayload>
-        // parameter through, is a BREAKING change to a published 1.0.x API and touches four
-        // production projects, so it is sequenced after F6's measurements rather than rushed in
-        // alongside them. See ADR-0007.
-        // Suppression is scoped to these lines on purpose: the analyzer stays armed for the rest of
-        // the assembly, so a NEW reflection site is still a build error.
-#pragma warning disable IL2026, IL3050
-        var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload, PayloadJsonOptions);
-#pragma warning restore IL2026, IL3050
 
         // Layout: [8-byte big-endian expiry][8-byte payload-type marker][payload][32-byte HMAC over
         // everything before it]. Both header fields sit inside the signed region, so extending a
@@ -131,10 +177,81 @@ public sealed class HandleCodec : IDisposable
     /// answer with an actionable protocol error instead of a stack trace.
     /// </returns>
     /// <exception cref="ObjectDisposedException">The codec was disposed.</exception>
+    [Obsolete("Use the overload taking a JsonTypeInfo<TPayload>. This one deserializes reflectively, "
+        + "which a trimmed or AOT-compiled host cannot support. See ADR-0007.")]
+    [RequiresUnreferencedCode("Deserializes TPayload reflectively; trimming may remove members it needs.")]
+    [RequiresDynamicCode("Deserializes TPayload reflectively; AOT cannot generate the required code.")]
     public bool TryRead<TPayload>(string? handle, out TPayload? payload)
         where TPayload : notnull
     {
         payload = default;
+
+        if (!this.TryOpen<TPayload>(handle, out var payloadBytes))
+        {
+            return false;
+        }
+
+        try
+        {
+            payload = JsonSerializer.Deserialize<TPayload>(payloadBytes.Span, PayloadJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return payload is not null;
+    }
+
+    /// <summary>
+    /// Verifies a handle's signature and expiry, then deserializes its payload through a
+    /// source-generated contract.
+    /// </summary>
+    /// <typeparam name="TPayload">Expected payload type.</typeparam>
+    /// <param name="handle">The handle a client sent back.</param>
+    /// <param name="payloadTypeInfo">The payload's serialization contract.</param>
+    /// <param name="payload">The payload when verification succeeded.</param>
+    /// <returns>
+    /// <see langword="true"/> when the handle is authentic and unexpired. A forged, tampered, foreign
+    /// or expired handle returns <see langword="false"/> rather than throwing, so the tool layer can
+    /// answer with an actionable protocol error instead of a stack trace.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">The type info was <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The codec was disposed.</exception>
+    public bool TryRead<TPayload>(
+        string? handle,
+        JsonTypeInfo<TPayload> payloadTypeInfo,
+        out TPayload? payload)
+        where TPayload : notnull
+    {
+        ArgumentNullException.ThrowIfNull(payloadTypeInfo);
+        payload = default;
+
+        if (!this.TryOpen<TPayload>(handle, out var payloadBytes))
+        {
+            return false;
+        }
+
+        try
+        {
+            payload = JsonSerializer.Deserialize(payloadBytes.Span, payloadTypeInfo);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return payload is not null;
+    }
+
+    /// <summary>
+    /// Everything about reading a handle that is not deserialization: base64url, length, signature,
+    /// expiry and the payload-type marker. Shared so the two overloads cannot drift apart on any of
+    /// the checks that make a handle unforgeable.
+    /// </summary>
+    private bool TryOpen<TPayload>(string? handle, out ReadOnlyMemory<byte> payloadBytes)
+    {
+        payloadBytes = default;
         ObjectDisposedException.ThrowIf(this.disposed, this);
 
         if (string.IsNullOrWhiteSpace(handle))
@@ -185,21 +302,8 @@ public sealed class HandleCodec : IDisposable
             return false;
         }
 
-        try
-        {
-            // See the note on the Mint side; same reason, same deferral.
-#pragma warning disable IL2026, IL3050
-            payload = JsonSerializer.Deserialize<TPayload>(
-                buffer.AsSpan(HeaderLengthBytes, signedLength - HeaderLengthBytes),
-                PayloadJsonOptions);
-#pragma warning restore IL2026, IL3050
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-
-        return payload is not null;
+        payloadBytes = buffer.AsMemory(HeaderLengthBytes, signedLength - HeaderLengthBytes);
+        return true;
     }
 
     /// <summary>Releases the signing primitive.</summary>

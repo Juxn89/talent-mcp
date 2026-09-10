@@ -1,5 +1,6 @@
 namespace Talent.Architecture.Tests;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Talent.Mcp.Toolkit;
 using Xunit;
@@ -21,15 +22,9 @@ using Xunit;
 /// </summary>
 public sealed class TrimPostureRules
 {
-    /// <summary>
-    /// The three assemblies that are genuinely trim-clean and say so.
-    /// <para>
-    /// <c>Talent.Mcp.Toolkit</c> is absent on purpose — see
-    /// <see cref="The_toolkit_does_not_claim_trim_safety_while_HandleCodec_is_reflective"/>.
-    /// </para>
-    /// </summary>
+    /// <summary>The four assemblies that are trim-clean and declare it.</summary>
     public static TheoryData<string> TrimmableAssemblies =>
-        new("Talent.Domain", "Talent.Application", "Talent.Mcp.Tools");
+        new("Talent.Domain", "Talent.Application", "Talent.Mcp.Tools", "Talent.Mcp.Toolkit");
 
     private static IReadOnlyDictionary<string, string?> MetadataOf(Assembly assembly) =>
         assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
@@ -49,30 +44,34 @@ public sealed class TrimPostureRules
     }
 
     [Fact]
-    public void The_toolkit_does_not_claim_trim_safety_while_HandleCodec_is_reflective()
+    public void The_toolkit_annotates_its_reflective_overloads_rather_than_suppressing_them()
     {
-        // The asymmetry is the point, so it is asserted rather than left to a comment.
+        // Talent.Mcp.Toolkit spent part of F6 deliberately NOT claiming IsTrimmable, because its
+        // HandleCodec still serialized reflectively behind a #pragma — and a suppression hides the
+        // warning from consumers trimming their own applications, not only from this build. Claiming
+        // trim-safety while silencing the evidence against it is the silent-failure mode ADR-0002
+        // exists to prevent.
         //
-        // Talent.Mcp.Toolkit runs the same analyzers as the other three, but must NOT declare
-        // IsTrimmable, because it would be publishing a guarantee it does not keep:
-        // HandleCodec.Mint/TryRead are still reflection-based, and the narrow suppression at those
-        // two call sites hides the warning from a CONSUMER trimming their own app, not only from our
-        // build. Measured 8 Sep 2026: a downstream trimmed publish reports 4 HandleCodec diagnostics
-        // without the pragma and 0 with it.
-        //
-        // Claiming trim-safety while silencing the one signal that contradicts it is exactly the
-        // silent-failure mode ADR-0002 exists to prevent. This package is on NuGet, so the audience
-        // for that claim is strangers.
-        //
-        // Restore IsAotCompatible here — and delete this test — when the HandleCodec JsonTypeInfo
-        // change lands and the suppression goes away. See ADR-0007.
-        var metadata = MetadataOf(typeof(HandleCodec).Assembly);
+        // The claim is honest now because the remaining reflective paths are [Obsolete] overloads
+        // carrying [RequiresUnreferencedCode], which warns the caller instead of hiding from them.
+        // This asserts that shape holds: if someone deletes the annotations to quiet a warning, the
+        // assembly would go back to over-claiming and this fails.
+        var reflectiveOverloads = typeof(HandleCodec)
+            .GetMethods()
+            .Where(m => m.Name is "Mint" or "TryRead")
+            .Where(m => m.GetCustomAttributes(typeof(ObsoleteAttribute), inherit: false).Length > 0)
+            .ToArray();
 
-        Assert.False(
-            metadata.ContainsKey("IsTrimmable") || metadata.ContainsKey("IsAotCompatible"),
-            "Talent.Mcp.Toolkit now declares itself trim- or AOT-safe. That is only honest once "
-            + "HandleCodec no longer serializes reflectively: while the IL2026/IL3050 suppression "
-            + "stands, the claim tells consumers the assembly is safe to trim AND hides the warning "
-            + "that would tell them otherwise. Fix HandleCodec first — see ADR-0007.");
+        Assert.NotEmpty(reflectiveOverloads);
+        Assert.All(reflectiveOverloads, method =>
+        {
+            Assert.True(
+                method.GetCustomAttributes(typeof(RequiresUnreferencedCodeAttribute), false).Length > 0,
+                $"{method.Name}'s obsolete overload must carry [RequiresUnreferencedCode]: the assembly "
+                + "declares itself trimmable, so every reflective path has to warn its caller.");
+            Assert.True(
+                method.GetCustomAttributes(typeof(RequiresDynamicCodeAttribute), false).Length > 0,
+                $"{method.Name}'s obsolete overload must carry [RequiresDynamicCode].");
+        });
     }
 }

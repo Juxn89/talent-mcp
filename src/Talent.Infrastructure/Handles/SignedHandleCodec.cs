@@ -1,5 +1,7 @@
 namespace Talent.Infrastructure.Handles;
 
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization.Metadata;
 using Talent.Application.Ports;
 using Talent.Mcp.Toolkit;
 
@@ -46,11 +48,27 @@ public sealed class SignedHandleCodec : IHandleCodec, IDisposable
     }
 
     /// <inheritdoc />
+    public string Mint<TPayload>(TPayload payload, JsonTypeInfo<TPayload> payloadTypeInfo, TimeSpan timeToLive)
+        where TPayload : notnull
+        => this.codec.Mint(payload, payloadTypeInfo, timeToLive);
+
+    /// <inheritdoc />
+    [Obsolete("Use the overload taking a JsonTypeInfo<TPayload>. See ADR-0007.")]
+    [RequiresUnreferencedCode("Serializes TPayload reflectively.")]
+    [RequiresDynamicCode("Serializes TPayload reflectively.")]
     public string Mint<TPayload>(TPayload payload, TimeSpan timeToLive)
         where TPayload : notnull
         => this.codec.Mint(payload, timeToLive);
 
     /// <inheritdoc />
+    public bool TryRead<TPayload>(string? handle, JsonTypeInfo<TPayload> payloadTypeInfo, out TPayload? payload)
+        where TPayload : notnull
+        => this.codec.TryRead(handle, payloadTypeInfo, out payload);
+
+    /// <inheritdoc />
+    [Obsolete("Use the overload taking a JsonTypeInfo<TPayload>. See ADR-0007.")]
+    [RequiresUnreferencedCode("Deserializes TPayload reflectively.")]
+    [RequiresDynamicCode("Deserializes TPayload reflectively.")]
     public bool TryRead<TPayload>(string? handle, out TPayload? payload)
         where TPayload : notnull
         => this.codec.TryRead(handle, out payload);

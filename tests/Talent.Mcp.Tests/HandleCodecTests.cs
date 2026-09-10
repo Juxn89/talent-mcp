@@ -17,15 +17,15 @@ public sealed class HandleCodecTests
     private static readonly byte[] Key = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
     private static readonly byte[] OtherKey = Enumerable.Range(100, 32).Select(i => (byte)i).ToArray();
 
-    private sealed record Cursor(string Query, int Skip);
+    internal sealed record Cursor(string Query, int Skip);
 
     [Fact]
     public void Round_trips_a_payload()
     {
         using var codec = new HandleCodec(Key);
-        var handle = codec.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
-        Assert.True(codec.TryRead<Cursor>(handle, out var cursor));
+        Assert.True(codec.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out var cursor));
         Assert.Equal(new Cursor("dotnet", 40), cursor);
     }
 
@@ -36,7 +36,7 @@ public sealed class HandleCodecTests
 
         // Handles travel as ordinary tool arguments and end up in URLs and logs. '+' and '/' from
         // standard base64 would be mangled by a naive consumer; base64url avoids the class entirely.
-        var handle = codec.Mint(new Cursor("c# / .net", 1), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("c# / .net", 1), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
         Assert.DoesNotContain('+', handle);
         Assert.DoesNotContain('/', handle);
@@ -49,9 +49,9 @@ public sealed class HandleCodecTests
         using var minter = new HandleCodec(OtherKey);
         using var verifier = new HandleCodec(Key);
 
-        var foreign = minter.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+        var foreign = minter.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
-        Assert.False(verifier.TryRead<Cursor>(foreign, out var cursor));
+        Assert.False(verifier.TryRead(foreign, TestPayloadJsonContext.Default.Cursor, out var cursor));
         Assert.Null(cursor);
     }
 
@@ -59,14 +59,14 @@ public sealed class HandleCodecTests
     public void A_tampered_payload_is_rejected()
     {
         using var codec = new HandleCodec(Key);
-        var handle = codec.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
         // Flip one bit in the middle, which is where the payload lives.
         var bytes = System.Buffers.Text.Base64Url.DecodeFromChars(handle);
         bytes[bytes.Length / 2] ^= 0x01;
         var tampered = System.Buffers.Text.Base64Url.EncodeToString(bytes);
 
-        Assert.False(codec.TryRead<Cursor>(tampered, out _));
+        Assert.False(codec.TryRead(tampered, TestPayloadJsonContext.Default.Cursor, out _));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class HandleCodecTests
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
         using var codec = new HandleCodec(Key, clock);
 
-        var handle = codec.Mint(new Cursor("dotnet", 0), TimeSpan.FromMinutes(1));
+        var handle = codec.Mint(new Cursor("dotnet", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(1));
         var bytes = System.Buffers.Text.Base64Url.DecodeFromChars(handle);
 
         // The expiry is the first 8 bytes. Raising it is exactly the attack the layout defends
@@ -83,7 +83,7 @@ public sealed class HandleCodecTests
         bytes[7] = 0xFF;
         var extended = System.Buffers.Text.Base64Url.EncodeToString(bytes);
 
-        Assert.False(codec.TryRead<Cursor>(extended, out _));
+        Assert.False(codec.TryRead(extended, TestPayloadJsonContext.Default.Cursor, out _));
     }
 
     [Fact]
@@ -92,13 +92,13 @@ public sealed class HandleCodecTests
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
         using var codec = new HandleCodec(Key, clock);
 
-        var handle = codec.Mint(new Cursor("dotnet", 0), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("dotnet", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
-        Assert.True(codec.TryRead<Cursor>(handle, out _));
+        Assert.True(codec.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out _));
 
         clock.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(1));
 
-        Assert.False(codec.TryRead<Cursor>(handle, out _));
+        Assert.False(codec.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out _));
     }
 
     [Fact]
@@ -109,13 +109,13 @@ public sealed class HandleCodecTests
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
         using var codec = new HandleCodec(Key, clock);
 
-        var handle = codec.Mint(new Cursor("dotnet", 0), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("dotnet", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
         clock.Advance(TimeSpan.FromMinutes(10));
 
-        Assert.True(codec.TryRead<Cursor>(handle, out _));
+        Assert.True(codec.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out _));
     }
 
-    private sealed record OtherPayload(Guid ShortlistId, int Processed);
+    internal sealed record OtherPayload(Guid ShortlistId, int Processed);
 
     [Fact]
     public void An_authentic_handle_for_a_different_payload_type_is_rejected()
@@ -129,9 +129,12 @@ public sealed class HandleCodecTests
         // keep: System.Text.Json is lenient, so OtherPayload read as Cursor produced
         // Cursor(Query: null, Skip: 0) instead of throwing, TryRead returned true, and the tool
         // would have paged from offset 0 believing the handle was its own.
-        var shortlistHandle = codec.Mint(new OtherPayload(Guid.NewGuid(), 3), TimeSpan.FromMinutes(10));
+        var shortlistHandle = codec.Mint(
+            new OtherPayload(Guid.NewGuid(), 3),
+            TestPayloadJsonContext.Default.OtherPayload,
+            TimeSpan.FromMinutes(10));
 
-        Assert.False(codec.TryRead<Cursor>(shortlistHandle, out var cursor));
+        Assert.False(codec.TryRead(shortlistHandle, TestPayloadJsonContext.Default.Cursor, out var cursor));
         Assert.Null(cursor);
     }
 
@@ -143,9 +146,9 @@ public sealed class HandleCodecTests
         using var minter = new HandleCodec(Key);
         using var verifier = new HandleCodec(Key);
 
-        var handle = minter.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+        var handle = minter.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
-        Assert.True(verifier.TryRead<Cursor>(handle, out var cursor));
+        Assert.True(verifier.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out var cursor));
         Assert.Equal(new Cursor("dotnet", 40), cursor);
     }
 
@@ -161,7 +164,7 @@ public sealed class HandleCodecTests
 
         // Never throws: the tool layer needs to answer with an actionable protocol error, and an
         // exception escaping here would surface as a stack trace to a client instead.
-        Assert.False(codec.TryRead<Cursor>(handle, out _));
+        Assert.False(codec.TryRead(handle, TestPayloadJsonContext.Default.Cursor, out _));
     }
 
     [Fact]
@@ -185,7 +188,7 @@ public sealed class HandleCodecTests
         using var codec = new HandleCodec(Key);
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => codec.Mint(new Cursor("x", 0), TimeSpan.FromSeconds(seconds)));
+            () => codec.Mint(new Cursor("x", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromSeconds(seconds)));
     }
 
     [Fact]
@@ -194,7 +197,7 @@ public sealed class HandleCodecTests
         var codec = new HandleCodec(Key);
         codec.Dispose();
 
-        Assert.Throws<ObjectDisposedException>(() => codec.Mint(new Cursor("x", 0), TimeSpan.FromMinutes(1)));
+        Assert.Throws<ObjectDisposedException>(() => codec.Mint(new Cursor("x", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(1)));
     }
 
     [Fact]
@@ -217,12 +220,12 @@ public sealed class HandleCodecTests
         var handles = new string[200];
         Parallel.For(0, handles.Length, i =>
         {
-            handles[i] = codec.Mint(new Cursor("q" + i, i), TimeSpan.FromMinutes(10));
+            handles[i] = codec.Mint(new Cursor("q" + i, i), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
         });
 
         Parallel.For(0, handles.Length, i =>
         {
-            Assert.True(codec.TryRead<Cursor>(handles[i], out var cursor));
+            Assert.True(codec.TryRead(handles[i], TestPayloadJsonContext.Default.Cursor, out var cursor));
             Assert.Equal(i, cursor!.Skip);
         });
     }
@@ -231,7 +234,7 @@ public sealed class HandleCodecTests
     public void Signatures_use_the_full_hmac_length()
     {
         using var codec = new HandleCodec(Key);
-        var handle = codec.Mint(new Cursor("a", 0), TimeSpan.FromMinutes(1));
+        var handle = codec.Mint(new Cursor("a", 0), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(1));
         var bytes = System.Buffers.Text.Base64Url.DecodeFromChars(handle);
 
         // 8-byte expiry + payload + 32-byte HMAC-SHA256. A truncated signature would still verify
@@ -260,7 +263,7 @@ public sealed class HandleCodecTests
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
         using var codec = new HandleCodec(Key, clock);
 
-        var handle = codec.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+        var handle = codec.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
 
         // Decodes to: [8-byte expiry][8-byte type marker]{"query":"dotnet","skip":40}[32-byte HMAC].
         // The camelCase payload is JsonSerializerDefaults.Web — the setting a source-generated
@@ -268,6 +271,51 @@ public sealed class HandleCodecTests
         Assert.Equal(
             "AAAAAGqQKRi4yPyKLkvv9HsicXVlcnkiOiJkb3RuZXQiLCJza2lwIjo0MH2TEy1Bopel2kEZCTerF9NHbRAzloP2ZYr9ocwlYbzkig",
             handle);
+    }
+
+    [Fact]
+    public void The_source_generated_path_produces_the_same_bytes_as_the_reflective_one()
+    {
+        // The whole risk of adding the JsonTypeInfo overload, stated as an assertion. A
+        // source-generated context inherits none of JsonSerializerDefaults.Web's settings --
+        // camelCase, case-insensitive reads, AllowReadingFromString -- and the reflective path used
+        // all three. Miss one and handles minted before a deploy stop reading after it.
+        //
+        // The golden vector already covers this indirectly, since it now runs through the
+        // source-generated path and still matches a string recorded against the reflective one. This
+        // states it directly, so a failure names the cause instead of showing two base64 blobs.
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z", null));
+        using var codec = new HandleCodec(Key, clock);
+        var payload = new Cursor("c# / .net", 40);
+
+#pragma warning disable CS0618 // Comparing against the legacy path is the entire point.
+        var reflective = codec.Mint(payload, TimeSpan.FromMinutes(10));
+#pragma warning restore CS0618
+        var sourceGenerated = codec.Mint(payload, TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
+
+        Assert.Equal(reflective, sourceGenerated);
+    }
+
+    [Fact]
+    public void A_handle_minted_by_the_legacy_overload_still_reads_through_the_new_one()
+    {
+        // The obsolete overloads remain public API and keep working, which is what makes this a minor
+        // release rather than a major. A consumer mid-migration will have one of each in flight.
+        using var codec = new HandleCodec(Key);
+
+#pragma warning disable CS0618 // Exercising the legacy path deliberately.
+        var legacyHandle = codec.Mint(new Cursor("dotnet", 40), TimeSpan.FromMinutes(10));
+#pragma warning restore CS0618
+
+        Assert.True(codec.TryRead(legacyHandle, TestPayloadJsonContext.Default.Cursor, out var cursor));
+        Assert.Equal(new Cursor("dotnet", 40), cursor);
+
+        var newHandle = codec.Mint(new Cursor("dotnet", 40), TestPayloadJsonContext.Default.Cursor, TimeSpan.FromMinutes(10));
+
+#pragma warning disable CS0618
+        Assert.True(codec.TryRead<Cursor>(newHandle, out var readBack));
+#pragma warning restore CS0618
+        Assert.Equal(new Cursor("dotnet", 40), readBack);
     }
 
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider

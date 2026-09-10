@@ -11,6 +11,7 @@ using Talent.Application.UseCases;
 using Talent.Mcp.Toolkit;
 using Talent.Mcp.Tools.Constants;
 using Talent.Mcp.Tools.Contracts;
+using Talent.Mcp.Tools.Serialization;
 
 /// <summary>
 /// State carried across an MRTR confirmation round-trip.
@@ -223,7 +224,8 @@ public sealed class RejectCandidateTool
                 + "reject_candidate without either.");
         }
 
-        if (!handles.TryRead<PendingRejection>(state, out var readPending) || readPending is null)
+        if (!handles.TryRead(state, TalentToolHandleJsonContext.Default.PendingRejection, out var readPending)
+            || readPending is null)
         {
             throw new McpException(
                 "The rejection confirmation has expired or is not valid. Call reject_candidate again "
@@ -313,6 +315,7 @@ public sealed class RejectCandidateTool
 
         var state = handles.Mint(
             new PendingRejection(candidateId, trimmedReason),
+            TalentToolHandleJsonContext.Default.PendingRejection,
             options.ConfirmationHandleTimeToLive);
 
         return new InputRequiredException(inputRequests, state);

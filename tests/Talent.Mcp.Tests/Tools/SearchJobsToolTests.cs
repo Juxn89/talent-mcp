@@ -6,6 +6,7 @@ using Talent.Application.UseCases;
 using Talent.Domain.Enums;
 using Talent.Mcp.Tools.Constants;
 using Xunit;
+using Talent.Application.Serialization;
 
 /// <summary>
 /// <c>search_jobs</c> over the real transport: the tool whose whole job is to prove that a signed
@@ -120,7 +121,10 @@ public sealed class SearchJobsToolTests
         // Signed by this very server, unexpired, and carrying the wrong payload type. Without the
         // payload-type marker in the signed region, System.Text.Json's leniency would deserialize this
         // into a cursor with a null query and Skip 0 — a silently wrong page rather than a refusal.
-        var foreign = harness.Mint(new { CandidateIds = new[] { Guid.NewGuid() } }, TimeSpan.FromMinutes(5));
+        var foreign = harness.Mint(
+            new ForeignPayload([Guid.NewGuid()]),
+            TestPayloadJsonContext.Default.ForeignPayload,
+            TimeSpan.FromMinutes(5));
 
         var result = await harness.CallAsync(
             Mcp.ToolNames.SearchJobs,
@@ -228,7 +232,7 @@ public sealed class SearchJobsToolTests
         var page = await harness.SearchAsync(query: "Engineer", pageSize: 5);
         var handle = page.GetProperty("nextPageHandle").GetString()!;
 
-        Assert.True(harness.TryRead<JobSearchCursor>(handle, out var cursor));
+        Assert.True(harness.TryRead(handle, TalentHandleJsonContext.Default.JobSearchCursor, out var cursor));
         Assert.Equal("Engineer", cursor!.Query);
         Assert.Equal(5, cursor.Skip);
         Assert.Equal(5, cursor.Take);

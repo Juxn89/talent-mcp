@@ -6,11 +6,11 @@
     <PackageId>Talent.Mcp.Server</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Local/default version only; CI derives the published one from the tag. See the toolkit's note. -->
-    <Version>1.0.5</Version>
+    <Version>1.1.0</Version>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>talent-mcp</ToolCommandName>
-    <PackageProjectUrl>https://github.com/juxn89/talent-mcp</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/Juxn89/talent-mcp</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageDescription>MCP server for the recruitment domain — job search, candidate-fit scoring, and skill extraction. Stateless Streamable HTTP with OAuth 2.1 + PKCE authorization and deterministic scoring.</PackageDescription>
     <PackageTags>mcp;model-context-protocol;recruitment;dotnet-tool;oauth2;postgresql;ai-tooling;llm-agents</PackageTags>
@@ -26,7 +26,18 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Microsoft.NET.Sdk does not include appsettings.json the way the Web SDK does. -->
-    <None Include="appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!--
+      Copied for `dotnet run` locally, and deliberately NOT published. PackAsTool packs the publish
+      output, so an earlier `appsettings*.json` glob put this file inside the package on nuget.org
+      along with the handle signing key it carries. That key is a labelled placeholder, but the file
+      itself says any client that can read it can forge a pagination handle, and publishing it means
+      anyone whose environment happens to be Development picks it up silently. From 1.1.0 it would
+      also have switched on MigrateAndSeedOnStartup against whatever database the tool was pointed at.
+    -->
+    <None Include="appsettings.Development.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />

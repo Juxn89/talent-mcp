@@ -100,3 +100,33 @@ dotnet_naming_style.begins_with_i.required_prefix = I
 dotnet_naming_style.begins_with_i.required_suffix =
 dotnet_naming_style.begins_with_i.word_separator =
 dotnet_naming_style.begins_with_i.capitalization = pascal_case
+
+# CA2007 — ConfigureAwait(false) in code that runs under a caller's synchronization context.
+#
+# Scoped to the NuGet library and the stdio host because that is where omitting it deadlocks, which
+# AGENTS.md records as pitfall 10. It was previously "enforced" by `<NoWarn>$(NoWarn)</NoWarn>` in
+# Talent.Mcp.Toolkit.csproj -- a no-op that assigns NoWarn to itself, under a comment describing the
+# rule it was not applying. Every await in both projects already complied when this was turned on, so
+# nothing was broken; the guard simply did not exist.
+[src/{Talent.Mcp.Toolkit,Talent.Mcp.Server.Stdio}/**.cs]
+dotnet_diagnostic.CA2007.severity = error
+
+# Scoped exception, dated 10 Sep 2026, with the work it stands for named.
+#
+# These two files hold 24 `await using` statements whose operation awaits already use
+# ConfigureAwait(false) but whose implicit DisposeAsync awaits do not. Fixing that is not the
+# one-line change it looks like: `await using var x = expr.ConfigureAwait(false)` makes x a
+# ConfiguredAsyncDisposable, so the variable can no longer be used as the connection or command it
+# wraps. Each site has to become two statements, which is 24 restructured blocks in the most
+# intricate file in this library -- the LISTEN/NOTIFY task store -- and that does not belong in a
+# release bundled to be stable.
+#
+# The exposure is narrow and real: our own hosts are console applications with no
+# SynchronizationContext, so nothing here can deadlock. A CONSUMER of this NuGet package calling from
+# WPF, WinForms or classic ASP.NET can, because the disposal is now the only remaining capture point
+# once every operation await is already configured.
+#
+# Suppressed here rather than repo-wide so the rule keeps guarding everything else, and so this debt
+# stays visible and scoped instead of disappearing into a global NoWarn.
+[src/Talent.Mcp.Toolkit/Tasks/{PostgresMcpTaskStore,PostgresTaskStoreSchema}.cs]
+dotnet_diagnostic.CA2007.severity = suggestion

@@ -19,4 +19,12 @@
          AddTalentTelemetry, which is transport-agnostic. -->
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      The Web SDK publishes appsettings.Development.json by default, which put the dev handle signing
+      key inside the container image. Kept in the build output so `dotnet run` still works locally;
+      excluded from publish so it does not ship. See the matching note in the stdio host.
+    -->
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
 </Project>

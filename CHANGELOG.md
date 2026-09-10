@@ -23,6 +23,16 @@ Entries below cover both unless a package is named.
 
 ### Added
 
+- **`appsettings.Development.json` no longer ships.** It was inside the published `talent-mcp`
+  package and the container image, carrying the dev handle signing key — which that file itself warns
+  can be used to forge a handle — and, from this release, `MigrateAndSeedOnStartup: true`. Both hosts
+  now keep it in build output for local `dotnet run` and out of publish output, and `publish.yml`
+  refuses to push a package that contains one.
+- **`CA2007` is actually enforced** in the library and stdio host. It was previously "enforced" by
+  `<NoWarn>$(NoWarn)</NoWarn>`, which assigns the property to itself and does nothing. Turning the
+  real rule on found 24 `await using` disposals in the Postgres task store that capture the calling
+  context; those carry a scoped, dated suppression naming the work, because fixing them restructures
+  24 blocks and does not belong in a release bundled to be stable. Every other file is guarded.
 - **CI now runs on every branch prefix the commit convention uses.** `chore/**`, `docs/**`, `ci/**`
   and others were absent from the `push` trigger, so those branches ran no CI and said nothing about
   it — a push looked identical to a passing build.

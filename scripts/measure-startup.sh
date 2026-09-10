@@ -65,8 +65,15 @@ publish_config() {
 # fast and serves nothing is not a faster configuration, so a config failing this has its timings
 # struck through in the report rather than published.
 functional_gate() {
-  local out
-  out=$(printf '%s\n' "$TOOLS_LIST" | timeout 60 "$@" 2>/dev/null)
+  local out err
+  err=$(mktemp)
+
+  # stdin is held open briefly after the request rather than closed at once. On EOF the stdio
+  # transport shuts the host down, and a host that exits before flushing its response looks exactly
+  # like a host with no tools -- the ambiguity that made the first CI run of this script
+  # uninformative. `measure` below deliberately does NOT do this: closing stdin immediately is
+  # ADR-0002's stated methodology, and holding it open would inflate the timing it exists to report.
+  out=$( (printf '%s\n' "$TOOLS_LIST"; sleep 5) | timeout 60 "$@" 2>"$err" )
 
   local missing=()
   local tool
@@ -76,8 +83,18 @@ functional_gate() {
 
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "    functional gate FAILED -- missing: ${missing[*]}"
+    # Print what actually happened. Without this the gate cannot distinguish "the host started and
+    # served nothing" from "the host never started at all", and those need opposite fixes.
+    echo "    ---- stdout (${#out} bytes) ----"
+    head -c 1500 <<<"$out" | sed 's/^/    /'
+    echo "    ---- stderr ----"
+    head -c 1500 "$err" | sed 's/^/    /'
+    echo "    --------------------------------"
+    rm -f "$err"
     return 1
   fi
+
+  rm -f "$err"
   echo "    functional gate ok -- all six tools present"
 }
 
@@ -136,10 +153,20 @@ publish_config sc-trim -r "$RID" --self-contained true -p:PublishTrimmed=true \
                        -p:SuppressTrimAnalysisWarnings=true
 publish_config sc-r2r  -r "$RID" --self-contained true -p:PublishReadyToRun=true
 
-grep -E "IL[0-9]{4}" "$OUT/publish-sc-trim.log" > "$OUT/trim-warnings.txt" 2>/dev/null || true
-echo "trim warnings archived: $(wc -l < "$OUT/trim-warnings.txt" 2>/dev/null || echo 0)"
+# The trimmed publish above suppresses ILLink warnings so it can complete at all, which means its
+# log contains none to archive -- the first CI run duly uploaded a 0-byte file. Re-run the analysis
+# with them ON purely to capture the list. Suppressing quietly is what ADR-0002 warns against, and
+# this list is the raw material for any future decision about widening trim coverage. It is expected
+# to exit non-zero: the exit code is not the point, the output is.
+dotnet publish "$PROJECT" -c Release -r "$RID" --self-contained true \
+    -p:PublishTrimmed=true -p:TrimMode=full -p:TrimmerSingleWarn=false \
+    -o "$OUT/publish/trim-analysis" --nologo > "$OUT/trim-analysis.log" 2>&1 || true
+grep -E "IL[0-9]{4}" "$OUT/trim-analysis.log" | sort -u > "$OUT/trim-warnings.txt" 2>/dev/null || true
+rm -rf "$OUT/publish/trim-analysis"
+echo "trim diagnostics archived: $(wc -l < "$OUT/trim-warnings.txt" 2>/dev/null || echo 0)"
 echo
 
+MEASURED=0
 for id in fdd sc sc-trim sc-r2r; do
   bin="$OUT/publish/$id/Talent.Mcp.Server.Stdio"
   if [[ ! -x "$bin" ]]; then
@@ -149,10 +176,21 @@ for id in fdd sc sc-trim sc-r2r; do
   echo "==> measuring $id"
   if functional_gate "$bin"; then
     measure "$id" "$bin"
+    MEASURED=$((MEASURED + 1))
   else
     echo "    timings NOT recorded -- a config that serves nothing is not a faster config"
   fi
 done
 
 echo
+# A run that measured nothing must not report success. The first version of this script ended in an
+# unconditional echo, so a CI job whose every configuration failed the functional gate still went
+# green and uploaded an empty artifact -- a gate that cannot fail, which is worse than no gate.
+if [[ $MEASURED -eq 0 ]]; then
+  echo "FAILED: no configuration passed the functional gate, so nothing was measured."
+  echo "        The stdout/stderr dumps above say what the host actually did."
+  exit 1
+fi
+
+echo "measured $MEASURED of 4 configurations"
 echo "wrote $OUT/startup-metrics.json and $OUT/startup-metrics.md"

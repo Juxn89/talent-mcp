@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
-    branches: ['main', 'feat/**', 'fix/**']
+    # Every prefix this repository's commit convention uses, because a branch not listed here gets no
+    # CI at all and says nothing about it. That is not hypothetical: chore/package-quality was pushed,
+    # `gh run watch` was pointed at the resulting run, and there was no run -- the watch reported
+    # success on nothing. A list like this drifts, so anyone adding a prefix to the convention adds it
+    # here too; the alternative, dropping the filter entirely, doubles every run against the
+    # pull_request trigger below.
+    branches: ['main', 'feat/**', 'fix/**', 'chore/**', 'docs/**', 'ci/**', 'build/**', 'refactor/**', 'test/**', 'perf/**']
   pull_request:
     branches: ['main']
 

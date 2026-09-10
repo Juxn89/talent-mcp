@@ -23,6 +23,9 @@ Entries below cover both unless a package is named.
 
 ### Added
 
+- **CI now runs on every branch prefix the commit convention uses.** `chore/**`, `docs/**`, `ci/**`
+  and others were absent from the `push` trigger, so those branches ran no CI and said nothing about
+  it — a push looked identical to a passing build.
 - **The published packages carry a README, symbols and SourceLink.** Until now a `.nupkg` held only
   the assembly and its XML docs, so the NuGet.org page rendered blank and nobody could debug into the
   library. Each package now ships its own README (the repository one is repo-shaped, and its relative

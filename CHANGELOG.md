@@ -27,6 +27,12 @@ Entries below cover both unless a package is named.
   functions: `CandidateFitScorer.Score` — one pair and a 500-candidate shortlist, the ceiling
   `bulk_score_shortlist` works to — and `SkillNormalizer.Extract` across three CV lengths, since its
   cost is proportional to alias count times text length rather than flat.
+- **Cold start and memory are measured in CI**, across four publish configurations, with a functional
+  gate that requires all six tools by name before any timing is recorded. Result: ReadyToRun cuts
+  time-to-serving from 315 ms to 172 ms, and **trimming does not work at all** — the trimmed host
+  throws at startup because the SDK reflects over tool parameter types and a domain enum has no
+  `JsonTypeInfo`. The trim analyzer did not warn about it.
+  See [ADR-0007](docs/adr/0007-trim-clean-over-native-aot.md).
 - **Trim and AOT analyzers** on `Talent.Domain`, `Talent.Application`, `Talent.Mcp.Tools` and
   `Talent.Mcp.Toolkit`. With the repo-wide `TreatWarningsAsErrors`, a newly introduced
   reflection-based serialization site is now a build error. This closes the consequence left open in

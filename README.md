@@ -207,6 +207,22 @@ which is what makes the numbers reproducible rather than a description of one ma
 ceiling `bulk_score_shortlist` works to. `SkillNormalizer.Extract` is measured across three CV
 lengths, because its cost is proportional to alias count times text length rather than flat.
 
+Cold start and memory for the stdio host are measured separately, in CI rather than on a laptop, by
+the `startup-benchmark` job:
+
+| Configuration | Time to serving | Peak RSS | Publish size |
+|---|---:|---:|---:|
+| Framework-dependent (JIT) | 315 ms | 84.7 MB | 12.5 MB |
+| Self-contained, trimmed | **does not start** | — | 39.9 MB |
+| Self-contained, ReadyToRun | **172 ms** | 89.0 MB | 105.4 MB |
+
+ReadyToRun nearly halves the time to a served request, which is the metric that matters for a process
+a client launches once per session. Trimming is not merely slower — the host throws at startup,
+because the SDK builds tool schemas by reflecting over parameter types and a domain enum has no
+metadata under trimming. The trim analyzer never warned about it; it reported two unrelated EF Core
+diagnostics. [ADR-0007](./docs/adr/0007-trim-clean-over-native-aot.md) has the stack trace and what
+it costs to reverse.
+
 Results and what they mean are in
 [`docs/verification/domain-benchmarks.md`](./docs/verification/domain-benchmarks.md). The short
 version: scoring a full 500-candidate shortlist costs about a millisecond, so whatever makes

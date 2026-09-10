@@ -265,8 +265,10 @@ docker run -p 5000:5000 ghcr.io/juxn89/talent-mcp:latest
 ```
 
 **Releasing** is tag-driven — `git tag v1.2.3 && git push origin v1.2.3` publishes both packages, the
-image, and a GitHub release. `Talent.Mcp.Toolkit` and `Talent.Mcp.Server` version independently, so a
-breaking change in the library does not force an unearned major on the tool.
+image, and a GitHub release. **The tag sets the version**: CI passes it to `dotnet build` and
+`dotnet pack`, so the package, the assembly inside it and the tag cannot drift apart. Both packages
+go out at the tag's version; splitting them would need package-scoped tags, which is a change to make
+when the library first needs a major the tool has not earned.
 
 ---
 

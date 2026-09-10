@@ -45,15 +45,22 @@ Entries below cover both unless a package is named.
 - `PostgresMcpTaskStore` and `ToolExecutionTelemetry` now serialize through source-generated
   contexts (`McpTasksJsonContext`, `McpJsonUtilities.GetTypeInfo<T>`) instead of reflection.
   Byte-identical output, verified by test — existing rows need no migration.
-- **Package versions are decoupled.** `Talent.Mcp.Toolkit` and `Talent.Mcp.Server` each carry their
-  own `<Version>`, so a breaking change in the library no longer forces an unearned major on the
-  tool.
+- **The git tag now sets the published version.** `publish.yml` passes `-p:Version` derived from the
+  tag to both `dotnet build` and `dotnet pack`, so the tag, the `.nupkg` and the assembly inside it
+  cannot drift apart, and a malformed tag fails the run rather than publishing something unexpected.
+  Both packages release at the tag's version; each still carries its own `<Version>` for local
+  builds, so splitting them later needs only package-scoped tags.
 - CI's infrastructure-test Postgres sidecar moves from `16-alpine` to `18.6-alpine`, matching
   `deploy/compose.yaml`. Those tests exist to catch provider-specific mapping behaviour, so running
   them against a different major defeated their purpose.
 
 ### Fixed
 
+- **Four releases published nothing, silently.** `dotnet pack` took the version from the csproj
+  rather than the tag, so v1.0.2 through v1.0.5 all packed `1.0.1`, NuGet answered `409 Conflict`,
+  and `--skip-duplicate` reported success. Every one of those runs went green having uploaded
+  nothing — **only `1.0.1` ever reached nuget.org**. Fixed by deriving the version from the tag; the
+  root cause of the wrong number is the next entry.
 - **The version was declared twice with different values** — `1.0.0` in `Directory.Build.props` and
   `1.0.1` in `Directory.Packages.props`. The latter is imported second and won, so the former was
   dead and **v1.0.2 through v1.0.5 were all published stamped `1.0.1`**. Assembly version properties

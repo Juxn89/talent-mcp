@@ -166,9 +166,37 @@ rm -rf "$OUT/publish/trim-analysis"
 echo "trim diagnostics archived: $(wc -l < "$OUT/trim-warnings.txt" 2>/dev/null || echo 0)"
 echo
 
+# Configuration E: the dotnet tool as a user actually installs it.
+#
+# The only configuration here that measures a SHIPPED artifact. A-D are publish directories; nobody
+# installs one. `dotnet tool install` is how talent-mcp reaches people, and it adds what none of the
+# others include -- the generated apphost shim and the muxer resolving a framework-dependent IL
+# assembly. Quoting a publish-directory number as "cold start" understates what the user pays.
+#
+# --tool-path rather than --global so CI does not depend on, or pollute, a machine-wide tool state.
+# The shim and resolution path are identical either way.
+echo "==> installing the dotnet tool"
+if dotnet pack "$PROJECT" -c Release -o "$OUT/tool-pkg" --nologo > "$OUT/publish-tool.log" 2>&1 \
+   && dotnet tool install Talent.Mcp.Server \
+        --tool-path "$OUT/publish/tool" \
+        --add-source "$OUT/tool-pkg" \
+        --prerelease >> "$OUT/publish-tool.log" 2>&1; then
+  echo "    ok  $(du -sb "$OUT/publish/tool" | cut -f1) bytes"
+else
+  echo "    FAILED (see $OUT/publish-tool.log)"
+fi
+echo
+
 MEASURED=0
-for id in fdd sc sc-trim sc-r2r; do
-  bin="$OUT/publish/$id/Talent.Mcp.Server.Stdio"
+for id in fdd sc sc-trim sc-r2r tool; do
+  # The tool is invoked by its command name through the shim, not by the assembly's own apphost --
+  # which is the whole reason this configuration exists.
+  if [[ "$id" == "tool" ]]; then
+    bin="$OUT/publish/tool/talent-mcp"
+  else
+    bin="$OUT/publish/$id/Talent.Mcp.Server.Stdio"
+  fi
+
   if [[ ! -x "$bin" ]]; then
     echo "==> $id: no binary, skipping"
     continue
@@ -186,6 +214,13 @@ echo
 # A run that measured nothing must not report success. The first version of this script ended in an
 # unconditional echo, so a CI job whose every configuration failed the functional gate still went
 # green and uploaded an empty artifact -- a gate that cannot fail, which is worse than no gate.
+# Configuration E is the only one that measures something we actually ship, so its absence is a
+# failure rather than a gap in the report.
+if [[ ! -f "$OUT/startup-metrics.json" ]] || ! grep -q '"tool"' "$OUT/startup-metrics.json"; then
+  echo "WARNING: configuration E (installed dotnet tool) produced no measurement."
+  echo "         Every other row describes a publish directory nobody installs."
+fi
+
 if [[ $MEASURED -eq 0 ]]; then
   echo "FAILED: no configuration passed the functional gate, so nothing was measured."
   echo "        The stdout/stderr dumps above say what the host actually did."

@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Two packages ship from this repository and **version independently** since F6:
+Two packages ship from this repository, both at the version carried by the release tag:
 
 | Package | Kind |
 |---|---|
@@ -14,7 +14,12 @@ Two packages ship from this repository and **version independently** since F6:
 
 Entries below cover both unless a package is named.
 
-## [Unreleased]
+> **Versions 1.0.2 through 1.0.5 exist as git tags but were never published.** Each packed `1.0.1`
+> because the version came from the csproj rather than the tag, and `--skip-duplicate` reported the
+> resulting `409 Conflict` as success. `1.0.1` is the only prior version on nuget.org. Fixed in
+> 1.0.6, where the tag sets the version.
+
+## [1.0.6] — 2026-09-10
 
 ### Added
 
@@ -134,7 +139,8 @@ publish all three artifacts.
   silently empties a reflection-discovered tool set, and the failure is a `-32601` with no crash and
   no error log ([ADR-0002](docs/adr/0002-native-aot-and-explicit-tool-registration.md)).
 
-[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/Juxn89/talent-mcp/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Juxn89/talent-mcp/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Juxn89/talent-mcp/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/Juxn89/talent-mcp/compare/v1.0.2...v1.0.3

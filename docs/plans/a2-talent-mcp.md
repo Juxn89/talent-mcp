@@ -42,8 +42,13 @@ posterior a F6 está listado al final de esta sección.
 estimación se deja como estaba escrita, porque una previsión corregida a posteriori deja de ser una
 previsión.
 
-Publicado: `Talent.Mcp.Toolkit` y `Talent.Mcp.Server` en NuGet (`1.0.1` y `1.0.6`), imagen en GHCR.
-Siete ADRs, cuatro registros de verificación, 256 tests.
+Publicado: `Talent.Mcp.Toolkit` y `Talent.Mcp.Server` en NuGet — `1.1.0` el 16 sep 2026, con
+README de paquete, símbolos y SourceLink — más la imagen en GHCR. Siete ADRs, cuatro registros de
+verificación, 269 métodos de test repartidos en seis proyectos.
+
+> Las versiones `1.0.2` a `1.0.5` existen como tags y **no publicaron nada**: `dotnet pack` tomaba
+> la versión del csproj en vez del tag, NuGet respondía `409` y `--skip-duplicate` lo daba por
+> éxito. En nuget.org solo están `1.0.1`, `1.0.6` y `1.1.0`.
 
 ### Lo que el plan pedía y no salió como estaba escrito
 
@@ -70,7 +75,20 @@ Ninguno era una fase; todo salió de revisar lo que realmente se publicaba.
 | Trigger de CI | Filtraba por prefijo de rama; las que no estaban listadas no ejecutaban nada y no lo decían |
 | Test de reinicio | La comprobación 3 de más abajo, que era la única sin cubrir |
 
-Sin publicar: `main` acumula todo lo anterior desde `v1.0.6`. Es minor — ninguna rompe API.
+Todo lo anterior se publicó como **`v1.1.0` el 16 sep 2026**. Minor: añade API —las sobrecargas de
+`HandleCodec` con `JsonTypeInfo`, `MigrateAndSeedAsync`— y no quita ninguna, lo que el gate de
+validación de paquete comprueba contra la línea base publicada en cada `pack` en vez de fiarlo a
+quien escribe el número de versión.
+
+### Abierto, y ninguno bloquea nada
+
+| | |
+|---|---|
+| Imágenes GHCR sin verificar | Los jobs salieron en verde; nadie ha hecho `docker pull` contra el registro |
+| Comprobación 1 del plan | CI instala el tool y verifica las seis tools; configurarlo en un cliente MCP real no lo ha hecho nadie |
+| Paquetes por RID para ReadyToRun | 324 → 177 ms de arranque, a cambio de perder la instalación multiplataforma de un solo paquete. Decisión de distribución, no de rendimiento; cifras en [`ADR-0007`](../adr/0007-trim-clean-over-native-aot.md) |
+| 24 `await using` en el task store | Sus `DisposeAsync` implícitos capturan el contexto. Supresión acotada y fechada en `.editorconfig`. Exposición práctica nula: quien consume un `IMcpTaskStore` son servidores MCP, que son consola o ASP.NET Core y no tienen `SynchronizationContext` |
+| Trimming | Un bloqueante localizado, y **sin consumidor**: nada de lo que se publica va recortado |
 
 ---
 

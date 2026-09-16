@@ -52,17 +52,23 @@ public sealed class TaskStoreSurvivesDatabaseRestartTests : IAsyncLifetime
     public async Task DisposeAsync() => await this.container.DisposeAsync();
 
     [Fact]
-    public async Task A_completed_task_is_still_readable_after_the_database_restarts()
+    public async Task A_task_survives_a_database_restart_and_the_store_keeps_working()
     {
+        // One test and one restart, not two. An earlier revision split reading and writing into
+        // separate [Fact]s, which gave xUnit two instances of this class -- and therefore two
+        // containers competing for the pinned port, the second connecting to the first as it shut
+        // down: "57P01: terminating connection due to unexpected postmaster exit". Both assertions
+        // are about the same event, so one restart carries both and the collision cannot happen.
         await using var store = new PostgresMcpTaskStore(this.container.GetConnectionString());
 
-        // Started, not merely constructed: StartAsync opens the cross-node LISTEN connection, and that
-        // is the connection a restart kills. Skipping it would test the pool and miss the listener.
+        // Started, not merely constructed: StartAsync opens the cross-node LISTEN connection, and
+        // that is the connection a restart kills. Skipping it would test the pool and miss the
+        // listener.
         await store.StartAsync();
 
-        var created = await store.CreateTaskAsync();
+        var before = await store.CreateTaskAsync();
         await store.SetCompletedAsync(
-            created.TaskId,
+            before.TaskId,
             JsonDocument.Parse("""{"scoredCount":42}""").RootElement);
 
         await this.container.StopAsync();
@@ -73,47 +79,22 @@ public sealed class TaskStoreSurvivesDatabaseRestartTests : IAsyncLifetime
         // discards it. Recovery is the property under test, so what matters is that it happens
         // unaided and within a bound -- not that the very first call succeeds. Exhausting the bound
         // is a real failure, not a flake.
-        var loaded = await ReadWithRecoveryAsync(store, created.TaskId, TimeSpan.FromSeconds(60));
+        var loaded = await WithRecoveryAsync(
+            () => store.GetTaskAsync(before.TaskId), TimeSpan.FromSeconds(60));
 
         Assert.NotNull(loaded);
         Assert.Equal(McpTaskStatus.Completed, loaded!.Status);
         Assert.Equal(42, loaded.Result!.Value.GetProperty("scoredCount").GetInt32());
-    }
 
-    [Fact]
-    public async Task The_store_accepts_new_work_after_the_database_restarts()
-    {
-        // Reading back an old row could in principle work while the store is left unable to write.
-        // This asserts the connection recovery is complete rather than read-only.
-        await using var store = new PostgresMcpTaskStore(this.container.GetConnectionString());
-        await store.StartAsync();
+        // Reading an old row could succeed while the store is left effectively read-only, and that
+        // would pass for recovery. Writing afterwards is what makes it complete.
+        var after = await WithRecoveryAsync(
+            async () => await store.CreateTaskAsync(), TimeSpan.FromSeconds(60));
 
-        await store.CreateTaskAsync();
-
-        await this.container.StopAsync();
-        await this.container.StartAsync();
-
-        var afterRestart = await CreateWithRecoveryAsync(store, TimeSpan.FromSeconds(60));
-
-        Assert.NotNull(afterRestart);
-        var loaded = await store.GetTaskAsync(afterRestart!.TaskId);
-        Assert.NotNull(loaded);
-        Assert.Equal(McpTaskStatus.Working, loaded!.Status);
-    }
-
-    private static async Task<McpTaskInfo?> ReadWithRecoveryAsync(
-        PostgresMcpTaskStore store,
-        string taskId,
-        TimeSpan within)
-    {
-        return await WithRecoveryAsync(() => store.GetTaskAsync(taskId), within);
-    }
-
-    private static async Task<McpTaskInfo?> CreateWithRecoveryAsync(
-        PostgresMcpTaskStore store,
-        TimeSpan within)
-    {
-        return await WithRecoveryAsync(async () => await store.CreateTaskAsync(), within);
+        Assert.NotNull(after);
+        var reloaded = await store.GetTaskAsync(after!.TaskId);
+        Assert.NotNull(reloaded);
+        Assert.Equal(McpTaskStatus.Working, reloaded!.Status);
     }
 
     /// <summary>

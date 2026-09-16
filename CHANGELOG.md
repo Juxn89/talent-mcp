@@ -19,10 +19,15 @@ Entries below cover both unless a package is named.
 > resulting `409 Conflict` as success. `1.0.1` is the only prior version on nuget.org. Fixed in
 > 1.0.6, where the tag sets the version.
 
-## [Unreleased]
+## [1.1.0] — 2026-09-16
 
 ### Added
 
+- **`PostgresMcpTaskStore` is verified to survive a database restart.** A task written before the
+  restart is still readable afterwards, and the store accepts new work — its `LISTEN` connection and
+  its pool recover unaided, in about a second, measured across three CI runs. This is the property
+  that distinguishes it from `InMemoryMcpTaskStore`, and nothing had ever exercised it against an
+  actual restart.
 - **`appsettings.Development.json` no longer ships.** It was inside the published `talent-mcp`
   package and the container image, carrying the dev handle signing key — which that file itself warns
   can be used to forge a handle — and, from this release, `MigrateAndSeedOnStartup: true`. Both hosts
@@ -192,7 +197,8 @@ publish all three artifacts.
   silently empties a reflection-discovered tool set, and the failure is a `-32601` with no crash and
   no error log ([ADR-0002](docs/adr/0002-native-aot-and-explicit-tool-registration.md)).
 
-[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Juxn89/talent-mcp/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/Juxn89/talent-mcp/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Juxn89/talent-mcp/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Juxn89/talent-mcp/compare/v1.0.3...v1.0.4

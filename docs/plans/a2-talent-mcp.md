@@ -23,6 +23,57 @@ versionados y CI en verde.
 
 ---
 
+## Estado (16 sep 2026)
+
+**Las seis fases están cerradas.** F0 arrancó el 27 ago 2026 y F6 cerró el 10 sep; el trabajo
+posterior a F6 está listado al final de esta sección.
+
+| Fase | Fechas | |
+|---|---|---|
+| F0 · Spike y reglas | 27 ago | ✅ |
+| F1 · Dominio, capas y toolkit | 28 ago | ✅ |
+| F2 · Tools MCP | 1-2 sep | ✅ |
+| F3 · OAuth 2.1 con Keycloak | 3 sep | ✅ |
+| F4 · Observabilidad | 4 sep | ✅ |
+| F5 · Empaquetado y CI | 7 sep | ✅ |
+| F6 · AOT, benchmarks y documentación | 8-10 sep | ✅ |
+
+**Duración real: ~2 semanas**, no las 4-5 que estimaba la sección de alcance más abajo. Esa
+estimación se deja como estaba escrita, porque una previsión corregida a posteriori deja de ser una
+previsión.
+
+Publicado: `Talent.Mcp.Toolkit` y `Talent.Mcp.Server` en NuGet (`1.0.1` y `1.0.6`), imagen en GHCR.
+Siete ADRs, cuatro registros de verificación, 256 tests.
+
+### Lo que el plan pedía y no salió como estaba escrito
+
+- **Native AOT.** No se consiguió, y la razón está medida en
+  [`ADR-0007`](../adr/0007-trim-clean-over-native-aot.md): la build recortada no arranca. Ver la
+  tabla de decisiones más abajo, corregida.
+- **El GIF del flujo** de F6 se sustituyó por un transcript de terminal anotado — reproducible, y no
+  se desactualiza en silencio como un GIF.
+- **La "negociación hacia abajo"** de la sección de tests no existe bajo `SessionMode.Stateless`; ver
+  [`ADR-0001`](../adr/0001-streamable-http-session-mode.md).
+
+### Trabajo posterior a F6
+
+Ninguno era una fase; todo salió de revisar lo que realmente se publicaba.
+
+| | |
+|---|---|
+| Seeding al arranque | `docker compose up` no sembraba el dominio: el único `MigrateAsync` vivía en `TalentSeeder`, llamado solo desde fixtures. El principio 1 del catálogo promete lo contrario |
+| `HandleCodec` trim-safe | Sobrecargas con `JsonTypeInfo`; las viejas obsoletas y anotadas. No rompe API |
+| Calidad de paquete | El `.nupkg` llevaba solo la DLL: sin README (página en blanco en NuGet), sin símbolos, sin SourceLink |
+| Gate de API | Valida cada pack contra la última versión publicada |
+| Config de desarrollo fuera de los artefactos | `appsettings.Development.json` viajaba dentro del paquete y de la imagen, con la clave de firma de handles |
+| Versión derivada del tag | v1.0.2–v1.0.5 se publicaron estampadas `1.0.1` y NuGet las descartó en silencio |
+| Trigger de CI | Filtraba por prefijo de rama; las que no estaban listadas no ejecutaban nada y no lo decían |
+| Test de reinicio | La comprobación 3 de más abajo, que era la única sin cubrir |
+
+Sin publicar: `main` acumula todo lo anterior desde `v1.0.6`. Es minor — ninguna rompe API.
+
+---
+
 ## Terreno verificado (25 ago 2026)
 
 > **Nota (27 ago 2026, F0):** esta sección se escribió contra las notas de release de **2.0.0**. La
@@ -112,7 +163,7 @@ Promoción a header: `[McpHeader("Region")] string region`.
 | Dominio | **Reclutamiento auto-contenido** en Postgres con seeds; A1 lo reutiliza después |
 | Artefactos | **Los tres**: `dotnet tool` instalable + imagen Docker en GHCR + librería NuGet reutilizable |
 | Auth | **OAuth 2.1 completo con Keycloak** (Apache-2.0) en el compose, scopes por tool |
-| Native AOT | **Sí**, con benchmark de cold start publicado; fallback a JIT documentado en ADR si el trimming pelea |
+| ~~Native AOT~~ | **Corregido por medición (10 sep 2026).** La build recortada no arranca: el SDK construye el schema de cada tool reflejando sobre sus tipos de parámetro, y un enum del dominio no tiene `JsonTypeInfo` una vez recortado. ReadyToRun parte el arranque por la mitad (324 → 177 ms) pero no es aplicable al artefacto que lo necesita: el host stdio se distribuye como IL portable. Se envía **trim-clean con el hallazgo documentado**, que es lo que el fallback de esta misma fila preveía. [`ADR-0007`](../adr/0007-trim-clean-over-native-aot.md) |
 
 **Consecuencia honesta de alcance:** el catálogo estimaba 1-2 semanas para A2. Con OAuth completo, tres
 artefactos publicados, el trabajo de AOT y los lineamientos de arquitectura/E2E, la estimación realista es
@@ -164,21 +215,32 @@ corregido: la persistencia vive en `Infrastructure` y el dominio no conoce a nad
   Talent.Application/        → casos de uso + puertos: IJobRepository, ICandidateRepository,
                                IHandleCodec, IShortlistScorer. Solo referencia a Domain
   Talent.Infrastructure/     → adaptadores: EF Core/Npgsql, migraciones, seeds, Keycloak, exportadores OTel
+  Talent.Mcp.Tools/          → las seis tools, sus contratos de wire y el registro compartido.
+                               NO referencia Infrastructure ni ModelContextProtocol.AspNetCore: ambos
+                               hosts la cargan y uno es el stdio. Añadido en F2, ver ADR-0004
   Talent.Mcp.Server/         → presentación: ASP.NET Core, Streamable HTTP → imagen GHCR
   Talent.Mcp.Server.Stdio/   → presentación: host stdio → `dotnet tool`
   Talent.Mcp.Toolkit/        → librería técnica independiente del dominio (primitivas de protocolo) → NuGet
 /tests
   Talent.Architecture.Tests/ → regla de dependencia con ArchUnitNET: rompe el PR si Domain toca infraestructura
   Talent.Domain.Tests/       → scoring y normalización deterministas, sin infraestructura ni contenedores
+  Talent.Infrastructure.Tests/ → mapeo EF y repositorios contra Postgres real (Testcontainers). Un SEXTO
+                               proyecto que este plan no preveía: no había sitio para "¿el mapeo funciona
+                               de verdad contra Postgres?", y esa respuesta solo existe en el proveedor
+                               real (text[], ILIKE, containment, aplanado de owned types)
   Talent.Mcp.Tests/          → tools sobre transporte in-memory
   Talent.Mcp.Conformance/    → conformidad de protocolo (discover, MRTR, campos de caché, negociación)
   Talent.Mcp.E2E/            → camino real completo contra el compose: cliente MCP → HTTP → OAuth → Postgres
 /bench
-  Talent.Mcp.Bench/          → BenchmarkDotNet + medición de cold start
+  Talent.Mcp.Bench/          → BenchmarkDotNet sobre las funciones puras del dominio
+/scripts                     → verify-f5, verify-f6 y la medición de cold start que corre en CI
 /deploy
-  compose.yaml, keycloak/realm.json, otel/collector.yaml, grafana/dashboards/
+  compose.yaml, keycloak/realm.json, otel/collector.yaml, grafana/, loki/, prometheus/, postgres/
 /docs
-  adr/                       → decisiones con trade-offs
+  adr/                       → decisiones con trade-offs (siete a 16 sep 2026)
+  verification/              → registros fechados: qué se comprobó, contra qué fuente, cuándo
+  plans/                     → este fichero
+  INSTALLATION.md, DEVELOPMENT.md, CLAUDE_INTEGRATION.md
 ```
 
 **El dominio se defiende solo:** el scoring y la normalización de skills son funciones puras sobre
@@ -194,9 +256,9 @@ primer commit:
 |---|---|
 | `ToolNames` | `search_jobs`, `get_job`, `extract_skills`, … — usados por el servidor, los tests y el cliente demo |
 | `McpMetaKeys` | `io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, `logLevel`, `traceparent` |
-| `OAuthScopes` | `talent.jobs.read`, `talent.candidates.write`, `talent.candidates.reject` |
+| `OAuthScopes` | `talent.jobs.read`, `talent.candidates.read`, `talent.candidates.write`, `talent.candidates.reject` — cuatro, no tres: leer candidatos se separó de escribirlos en F3 |
 | `ProtocolVersions` | la revisión soportada (`2026-07-28`) y las de interoperabilidad hacia abajo |
-| `McpErrorCodes` | los del rango reservado `-32020…-32099`, no números crudos en el código |
+| ~~`McpErrorCodes`~~ | **Descartada, verificado 1 sep 2026.** La banda no está libre — el propio `McpErrorCode` del SDK ya define `-32020`, `-32021`, `-32022` y `-32042` — y `McpException` en 2.2.0 no expone miembro de código, así que una tool no puede emitir uno propio. Los fallos van en el resultado: `McpException` con un mensaje accionable e `isError: true` |
 | `TalentOptions` | TTLs de caché y de handles, tamaño de página, reintentos, timeouts → `IOptions<T>` |
 
 Analizadores Roslyn en `.editorconfig` con severidad de **error**, no de sugerencia.
@@ -232,7 +294,7 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
 
 ## Fases
 
-### F0 · Spike de riesgo y reglas del repo (2 días) — antes de comprometer el diseño
+### F0 · Spike de riesgo y reglas del repo ✅ 27 ago 2026
 - Verificar el **changelog de 2.0.0 → 2.2.0** (el plan se apoya en las notas de 2.0.0; hay que confirmar qué
   cambió después).
 - Probar **Native AOT contra el descubrimiento por atributos**: `WithToolsFromAssembly()` usa reflexión.
@@ -251,7 +313,7 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
   Va en la F0 a propósito: es lo que evita que la siguiente sesión de agente reintroduzca EF Core en el
   dominio o invente un magic string — exactamente el error que este plan ya tuvo una vez.
 
-### F1 · Dominio, capas y toolkit (5-6 días)
+### F1 · Dominio, capas y toolkit ✅ 28 ago 2026
 - `Talent.Domain`: entidades y reglas puras. El scoring y la normalización de skills como funciones puras,
   con tests de tabla que corren sin Docker.
 - `Talent.Application`: puertos (`IJobRepository`, `ICandidateRepository`, `IHandleCodec`) y casos de uso.
@@ -263,7 +325,7 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
   es mucho más barato que extirpar literales después.
 - `Talent.Mcp.Toolkit`: `HandleCodec`, políticas de caché, `PostgresMcpTaskStore`.
 
-### F2 · Tools MCP (4-5 días)
+### F2 · Tools MCP ✅ 1-2 sep 2026
 - Las 6 tools con `[McpServerToolType]` / `[McpServerTool]`, `inputSchema` explícito en todas.
 - `reject_candidate` con MRTR, incluido el camino degradado cuando `server.IsMrtrSupported` es `false`.
 - `bulk_score_shortlist` con `.WithTasks(...)` apuntando al store de Postgres.
@@ -272,7 +334,7 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
 - **Primer E2E** (`Talent.Mcp.E2E`) contra el compose, todavía sin auth: cliente MCP real → HTTP → Postgres,
   ejercitando `search_jobs` con paginación por handle y el ciclo MRTR de `reject_candidate`.
 
-### F3 · OAuth 2.1 con Keycloak (3-4 días)
+### F3 · OAuth 2.1 con Keycloak ✅ 3 sep 2026
 - Realm versionado en `deploy/keycloak/realm.json`, con `code_challenge_methods_supported: ["S256"]`
   declarado — si falta, el OAuth del SDK falla.
 - Servidor MCP como resource server, **scopes por tool** (lectura vs escritura vs destructiva).
@@ -295,29 +357,29 @@ Nada de esto llama a un LLM, así que el servidor corre sin API keys y sin costo
 - Extender el E2E al flujo OAuth completo: obtener token contra Keycloak, llamar con y sin el scope
   requerido, y comprobar que la tool destructiva se deniega sin él.
 
-### F4 · Observabilidad (2 días)
+### F4 · Observabilidad ✅ 4 sep 2026
 - Trazas y métricas OTel, con el contexto extraído de `_meta` para que una traza cruce cliente → servidor.
 - **Nada de la API de Logging de MCP** (deprecada): `stderr` en stdio, OTel en HTTP.
 - Dashboards de Grafana versionados como código: latencia por tool, tasa de error, tasks en vuelo.
 
-### F5 · Empaquetado y CI (2-3 días)
+### F5 · Empaquetado y CI ✅ 7 sep 2026
 - `dotnet tool` con instrucciones de configuración para Claude Code y Claude Desktop por stdio.
 - Imagen multi-stage, usuario no-root, healthcheck → GHCR.
 - Librería a NuGet con SemVer.
 - GitHub Actions: en cada PR, **build + arquitectura + unitarios + conformidad + E2E sobre el compose** como
   gate — los cuatro bloquean el merge, no solo informan. Publicar tool, imagen y librería al taggear.
 
-### F6 · AOT, benchmarks y documentación (2-3 días)
+### F6 · AOT, benchmarks y documentación ✅ 8-10 sep 2026
 - Native AOT (o el hallazgo documentado) con **cold start y memoria antes/después** — relevante de verdad
   porque un servidor stdio se lanza por sesión.
 - BenchmarkDotNet sobre el scoring.
-- README que abre con `docker compose up`, GIF del flujo, y ADRs enlazados.
+- README que abre con `docker compose up`, ~~GIF del flujo~~ **transcript de terminal anotado**, y ADRs enlazados. El GIF se sustituyó por decisión explícita: es reproducible, copiable, y no se desactualiza en silencio cuando cambia la superficie.
 
 ---
 
 ## Tests
 
-Cinco niveles, cada uno con un trabajo distinto. Los cinco corren en CI y bloquean el merge.
+Cinco niveles planificados, **seis proyectos en realidad** — `Talent.Infrastructure.Tests` se añadió en F1 porque el mapeo EF contra Postgres real no tenía sitio en esta lista. Todos corren en CI y todos bloquean el merge.
 
 1. **Arquitectura** (`Talent.Architecture.Tests`, ArchUnitNET): `Talent.Domain` no referencia EF Core, el SDK
    de MCP ni ASP.NET; `Talent.Application` solo referencia `Domain`; la presentación no salta a
@@ -328,12 +390,22 @@ Cinco niveles, cada uno con un trabajo distinto. Los cinco corren en CI y bloque
    accionables, y que los handles ajenos o expirados se rechacen.
 4. **Conformidad de protocolo** — el suite que más señal da: `server/discover` responde versiones y
    capacidades; el ciclo MRTR completo (primer `input_required` → reintento con `inputResponses`);
-   `ttlMs`/`cacheScope` presentes en todas las listas; orden de tools estable entre llamadas; negociación
-   hacia abajo con un cliente 2025-11-25; y que Keycloak declare `S256` en su metadata.
+   `ttlMs`/`cacheScope` presentes en todas las listas; orden de tools estable entre llamadas; y que
+   Keycloak declare `S256` en su metadata.
+   > **Corregido en F2.** Esta línea pedía "negociación hacia abajo con un cliente 2025-11-25". Bajo
+   > `SessionMode.Stateless` no hay downgrade que negociar: ese cliente se sirve statelessly, sin
+   > `Mcp-Session-Id` acuñado ni devuelto, y GET/DELETE responden `405`. Aseverar `-32022` sería aseverar
+   > un comportamiento `Stateful` que este servidor deliberadamente no tiene.
+   > [`ADR-0001`](../adr/0001-streamable-http-session-mode.md)
 5. **E2E** (`Talent.Mcp.E2E`) — lineamiento 8, **sin mocks**: un cliente MCP real contra el stack de
    `docker compose` (Postgres + Keycloak + servidor), atravesando OAuth. Cubre los caminos que solo fallan
-   al integrar: paginación por handle entre llamadas, MRTR completo, denegación por scope, y una task que
-   sobrevive al reinicio del contenedor. Testcontainers (MIT) levanta las dependencias en CI.
+   al integrar: paginación por handle entre llamadas, MRTR completo y denegación por scope.
+   Testcontainers (MIT) levanta las dependencias en CI.
+   > La task que sobrevive al reinicio acabó en `Talent.Infrastructure.Tests` (16 sep 2026), no aquí:
+   > `RealServerFixture` es una fixture de colección, y reiniciar Postgres por debajo del resto de
+   > clases no es defendible. El test levanta su propio contenedor con puerto fijo — con el mapeo
+   > aleatorio, un stop-start puede devolver otro puerto y el store fallaría al reconectar por una
+   > razón ajena a su lógica. Medido: sobrevive y reconecta en ~1 s.
 
 ---
 
@@ -342,7 +414,7 @@ Cinco niveles, cada uno con un trabajo distinto. Los cinco corren en CI y bloque
 | Riesgo | Mitigación |
 |---|---|
 | ~~Native AOT vs descubrimiento por reflexión~~ | **Resuelto (27 ago 2026)** tal como estaba escrito: el trimming sí lo rompe, y en silencio. Se corta en el paso 2 de la cascada — registro explícito con `WithTools<T>()`, sin necesidad de bajar a JIT. [`ADR-0002`](../adr/0002-native-aot-and-explicit-tool-registration.md) |
-| **Native AOT vs EF Core** (riesgo nuevo, 27 ago 2026) | El spike midió un grafo mínimo, sin EF Core. **EF Core no es AOT-compatible**; la vía soportada son *compiled models*. La pregunta que decide esto es de F1/F2: ¿el host stdio necesita EF Core, o basta un cliente delgado? Si AOT no sobrevive, el orden de corte del plan ya lo pone primero. Ver la sección "Scope limit" del [`ADR-0002`](../adr/0002-native-aot-and-explicit-tool-registration.md) |
+| ~~**Native AOT vs EF Core**~~ (riesgo nuevo 27 ago 2026, **cerrado 10 sep 2026**) | Se materializó, y peor de lo previsto. ADR-0004 respondió la pregunta de F1/F2 —el host stdio **sí** necesita EF Core— y F6 lo midió: la build recortada **no arranca**, pero no por EF Core. Falla en la generación del schema de las tools, porque el SDK refleja sobre los tipos de parámetro y un enum del dominio no tiene `JsonTypeInfo` una vez recortado. **El analizador de trimming nunca avisó de eso**: reportó dos diagnósticos de EF Core y calló sobre lo que realmente rompió. AOT se corta, como el orden del plan preveía. [`ADR-0007`](../adr/0007-trim-clean-over-native-aot.md) |
 | ~~El plan se apoya en notas de 2.0.0, no de 2.2.0~~ | **Resuelto (27 ago 2026).** Sin cambios rompientes; cinco hallazgos y una decisión nueva. [`Revisión del changelog`](../verification/sdk-2.0.0-to-2.2.0-review.md) · [`ADR-0001`](../adr/0001-streamable-http-session-mode.md) |
 | ~~Keycloak sin `S256` en su metadata~~ | **Resuelto (27 ago 2026).** Realm versionado en `deploy/keycloak/realm.json` y verificado contra el stack corriendo: `code_challenge_methods_supported` es `["plain","S256"]`. Ojo — `plain` no se puede quitar del metadata del realm, la imposición es por cliente; el test asserta *presencia* de S256, no igualdad. [`deploy/keycloak/README.md`](../../deploy/keycloak/README.md) |
 | La spec se sigue moviendo rápido | Fijar la revisión en el README y en un test; la política de deprecación da 12 meses de ventana |
@@ -361,15 +433,20 @@ dotnet run --project bench/Talent.Mcp.Bench -c Release   # BenchmarkDotNet sobre
 ./scripts/measure-startup.sh                            # cold start y memoria (necesita Postgres)
 ```
 
-Comprobaciones manuales:
-1. `dotnet tool install -g` + configurar en Claude Code por stdio → las 6 tools aparecen y `search_jobs`
-   devuelve datos sembrados.
-2. `reject_candidate` sin razón → llega `input_required`; el reintento con `inputResponses` la ejecuta.
-3. `bulk_score_shortlist`, reiniciar el contenedor, y la task sigue consultable (el store de Postgres
-   justifica su existencia).
-4. Una traza en Jaeger que cruza cliente demo → servidor → Postgres en un solo árbol.
-5. Llamada sin token → 401; token sin el scope de la tool destructiva → denegado.
-6. `tools/list` dos veces → mismo orden y `ttlMs`/`cacheScope` presentes.
+Comprobaciones de aceptación. Se escribieron como manuales; cinco de las seis acabaron automatizadas,
+que es mejor: una comprobación manual solo se hace la primera vez.
+
+| # | Qué | Estado a 16 sep 2026 |
+|---|---|---|
+| 1 | `dotnet tool install -g` + configurar en Claude Code por stdio → las 6 tools y datos sembrados | ⚠️ **Parcial.** CI instala el tool y verifica las seis por nombre contra Postgres vivo; configurarlo en un cliente real no lo ha hecho nadie |
+| 2 | `reject_candidate` sin razón → `input_required`; el reintento la ejecuta | ✅ E2E, con los dos caminos degradados |
+| 3 | `bulk_score_shortlist`, reiniciar el contenedor, task consultable | ✅ `TaskStoreSurvivesDatabaseRestartTests`. **Sobrevive y reconecta en ~1 s** |
+| 4 | Traza que cruza cliente → servidor → Postgres en un árbol | ✅ en sustancia: `A_meta_traceparent_survives_postgres_keycloak_and_a_real_socket`. Verlo en Jaeger sigue siendo cosa de ojos |
+| 5 | Sin token → 401; sin el scope destructivo → denegado | ✅ E2E |
+| 6 | `tools/list` dos veces → mismo orden, `ttlMs`/`cacheScope` presentes | ✅ Conformidad |
+
+La 3 era la única sin cubrir, y era la que este plan describe como la que *justifica la existencia del
+store de Postgres*. La respuesta, medida, es que sí.
 
 ---
 

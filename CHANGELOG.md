@@ -19,6 +19,29 @@ Entries below cover both unless a package is named.
 > resulting `409 Conflict` as success. `1.0.1` is the only prior version on nuget.org. Fixed in
 > 1.0.6, where the tag sets the version.
 
+## [Unreleased]
+
+### Fixed
+
+- **`search_jobs`: `nextPageHandle` is optional in the output schema**
+  ([#12](https://github.com/Juxn89/talent-mcp/issues/12)). It was declared required, but the serializer
+  omits a null handle, so every last page failed validation against the declared `outputSchema` —
+  MCP Inspector rejected it. The payload is unchanged; `OutputSchemaTests` now checks every tool for a
+  required property its schema allows to be null.
+- **Traces reach Postgres** ([#13](https://github.com/Juxn89/talent-mcp/issues/13)). Npgsql's own
+  `ActivitySource` is registered next to the tool source, so its command spans join the tool's trace in
+  both hosts. Before, every trace stopped at the tool span, despite the README saying otherwise. See
+  `docs/verification/npgsql-activity-source.md`.
+- **`weightedScore` is rounded to 4 decimals on the wire**
+  ([#14](https://github.com/Juxn89/talent-mcp/issues/14)), in `score_candidate_fit` and
+  `bulk_score_shortlist`. 0.75 × 0.6 used to arrive as `0.44999999999999996`; the total is still
+  computed from the exact products.
+
+### Changed
+
+- The README follows the layout shared with docs-assistant and claude-pr-review-bot, with generated
+  artwork (`scripts/readme-assets.mjs`) and screenshots of the running server in `docs/demo/`.
+
 ## [1.1.0] — 2026-09-16
 
 ### Added

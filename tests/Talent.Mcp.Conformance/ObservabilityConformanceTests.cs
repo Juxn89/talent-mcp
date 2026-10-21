@@ -2,6 +2,7 @@ namespace Talent.Mcp.Conformance;
 
 using System.Diagnostics;
 using Talent.Mcp.Toolkit.Tracing;
+using Talent.Mcp.Tools.Constants;
 using Xunit;
 
 /// <summary>
@@ -22,6 +23,9 @@ public sealed class ObservabilityConformanceTests
 {
     private static readonly IReadOnlyDictionary<string, object?> ExtractSkillsArguments =
         new Dictionary<string, object?> { ["text"] = "Five years of C# and PostgreSQL." };
+
+    private static readonly IReadOnlyDictionary<string, object?> SearchJobsArguments =
+        new Dictionary<string, object?> { ["query"] = "engineer", ["pageSize"] = 2 };
 
     private readonly ConformanceServerFixture fixture;
 
@@ -70,18 +74,50 @@ public sealed class ObservabilityConformanceTests
         Assert.Equal(default, activity.ParentSpanId);
     }
 
+    [Fact]
+    public async Task A_tool_that_reads_Postgres_carries_the_trace_into_the_database()
+    {
+        // #13: the README promised client → server → Postgres, but only the tool source was registered.
+        // search_jobs runs a query, so with Npgsql's source registered its command span joins the trace,
+        // parented to the tool span. Filtered by this test's trace id: the task store's background
+        // LISTEN/sweep also talks to Postgres, outside any tool call.
+        var traceId = ActivityTraceId.CreateRandom().ToHexString();
+        var traceParent = $"00-{traceId}-{ActivitySpanId.CreateRandom().ToHexString()}-01";
+
+        using var captured = ListenWhere(
+            activity => activity.TraceId.ToHexString() == traceId,
+            TalentActivitySource.Name,
+            ExternalActivitySources.Npgsql);
+        using var http = this.fixture.CreateHttpClient();
+        using var request = RawJsonRpc.ToolsCall(
+            this.fixture.McpEndpoint,
+            "search_jobs",
+            SearchJobsArguments,
+            nameHeader: "search_jobs",
+            traceParent: traceParent);
+
+        using var response = await http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var tool = Assert.Single(captured.Activities, static a => a.Source.Name == TalentActivitySource.Name);
+        var database = captured.Activities.Where(static a => a.Source.Name == ExternalActivitySources.Npgsql).ToArray();
+        Assert.NotEmpty(database);
+        Assert.All(database, span => Assert.Equal(tool.SpanId, span.ParentSpanId));
+    }
+
     private static CapturedActivities Listen(string traceId) =>
         ListenWhere(activity => activity.TraceId.ToHexString() == traceId);
 
     private static CapturedActivities ListenAll() => ListenWhere(static _ => true);
 
-    private static CapturedActivities ListenWhere(Func<Activity, bool> predicate)
+    private static CapturedActivities ListenWhere(Func<Activity, bool> predicate, params string[] sourceNames)
     {
         var activities = new List<Activity>();
+        var sources = sourceNames.Length == 0 ? [TalentActivitySource.Name] : sourceNames;
 
         var listener = new ActivityListener
         {
-            ShouldListenTo = source => source.Name == TalentActivitySource.Name,
+            ShouldListenTo = source => sources.Contains(source.Name, StringComparer.Ordinal),
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = activity =>
             {

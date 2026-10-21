@@ -96,6 +96,6 @@ public sealed class SearchJobsTool
         new(
             result.Jobs.Select(JobMapper.ToSummary).ToArray(),
             result.TotalMatches,
-            result.NextPageHandle,
-            result.NextPageHandle is not null);
+            HasMore: result.NextPageHandle is not null,
+            NextPageHandle: result.NextPageHandle);
 }

@@ -28,7 +28,10 @@ public static class TalentTelemetryServiceCollectionExtensions
     /// <summary>Configuration key for the OTLP endpoint the Collector listens on.</summary>
     public const string OtelEndpointConfigKey = "Talent:Otel:Endpoint";
 
-    /// <summary>Adds tracing (<see cref="TalentActivitySource"/>) and metrics (<see cref="TalentMeter"/>), OTLP-exported.</summary>
+    /// <summary>
+    /// Adds tracing (<see cref="TalentActivitySource"/> and Npgsql, see <see cref="ExternalActivitySources"/>)
+    /// and metrics (<see cref="TalentMeter"/>), OTLP-exported.
+    /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configuration">Read for <see cref="OtelEndpointConfigKey"/>.</param>
     /// <param name="serviceName">
@@ -55,7 +58,8 @@ public static class TalentTelemetryServiceCollectionExtensions
             .ConfigureResource(resource => resource.AddService(serviceName))
             .WithTracing(tracing =>
             {
-                tracing.AddSource(TalentActivitySource.Name);
+                // Npgsql's spans parent to the tool span, so a trace reaches Postgres (#13).
+                tracing.AddSource(TalentActivitySource.Name, ExternalActivitySources.Npgsql);
 
                 if (endpoint is not null)
                 {

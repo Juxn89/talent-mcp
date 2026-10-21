@@ -7,11 +7,6 @@ using Talent.Domain.Scoring;
 /// <summary>One page of job postings.</summary>
 /// <param name="Jobs">The postings on this page.</param>
 /// <param name="TotalMatches">Total matches across all pages.</param>
-/// <param name="NextPageHandle">
-/// Opaque handle to pass back as <c>pageHandle</c> for the next page, or <see langword="null"/> on the
-/// last page. Signed and short-lived: it is not an offset a caller can edit, and it carries the search
-/// criteria as well as the position, so page 2 cannot be an offset into a different result set.
-/// </param>
 /// <param name="HasMore">
 /// Whether a next page exists.
 /// <para>
@@ -21,11 +16,22 @@ using Talent.Domain.Scoring;
 /// is a model guessing. This field says it outright.
 /// </para>
 /// </param>
+/// <param name="NextPageHandle">
+/// Opaque handle to pass back as <c>pageHandle</c> for the next page, or <see langword="null"/> on the
+/// last page. Signed and short-lived: it is not an offset a caller can edit, and it carries the search
+/// criteria as well as the position, so page 2 cannot be an offset into a different result set.
+/// <para>
+/// Last and defaulted on purpose. The schema exporter marks a constructor parameter without a default
+/// as required, and a null handle is omitted from the payload, so a required <c>nextPageHandle</c> made
+/// every last page invalid against the declared <c>outputSchema</c> (#12). With the default it is
+/// optional, which is what the payload has always been.
+/// </para>
+/// </param>
 public sealed record SearchJobsResponse(
     IReadOnlyList<JobSummaryContract> Jobs,
     int TotalMatches,
-    string? NextPageHandle,
-    bool HasMore);
+    bool HasMore,
+    string? NextPageHandle = null);
 
 /// <summary>One job posting, plus which region served it.</summary>
 /// <param name="Job">The posting.</param>
@@ -68,7 +74,12 @@ public sealed record ExtractSkillsResponse(
 /// <param name="Name">Component id, stable across versions.</param>
 /// <param name="RawScore">The component's own 0–1 score before weighting.</param>
 /// <param name="Weight">Its share of the total.</param>
-/// <param name="WeightedScore">The product, so a caller need not multiply to explain the total.</param>
+/// <param name="WeightedScore">
+/// The product, so a caller need not multiply to explain the total. Rounded to
+/// <see cref="WeightedScoreDecimals"/> places on the wire: the exact product is a floating-point value
+/// such as <c>0.44999999999999996</c> for 0.75 × 0.6, which is noise to the person reading the
+/// breakdown (#14). The total is computed from the exact products before this rounding.
+/// </param>
 /// <param name="Reason">Machine-readable reason code.</param>
 /// <param name="Detail">Human-readable explanation.</param>
 public sealed record ScoreComponentContract(
@@ -77,7 +88,28 @@ public sealed record ScoreComponentContract(
     double Weight,
     double WeightedScore,
     ScoreReason Reason,
-    string Detail);
+    string Detail)
+{
+    /// <summary>Decimal places <see cref="WeightedScore"/> carries on the wire.</summary>
+    public const int WeightedScoreDecimals = 4;
+
+    /// <summary>Projects a domain score component onto the wire shape.</summary>
+    /// <param name="component">The domain component.</param>
+    /// <returns>The contract, with the weighted score rounded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="component"/> was <see langword="null"/>.</exception>
+    public static ScoreComponentContract From(ScoreComponent component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+
+        return new ScoreComponentContract(
+            component.Name,
+            component.RawScore,
+            component.Weight,
+            Math.Round(component.WeightedScore, WeightedScoreDecimals, MidpointRounding.AwayFromZero),
+            component.Reason,
+            component.Detail);
+    }
+}
 
 /// <summary>An explainable candidate-fit score.</summary>
 /// <param name="CandidateId">The candidate scored.</param>
@@ -103,15 +135,7 @@ public sealed record ScoreCandidateFitResponse(
     {
         ArgumentNullException.ThrowIfNull(score);
 
-        var components = score.Components
-            .Select(static c => new ScoreComponentContract(
-                c.Name,
-                c.RawScore,
-                c.Weight,
-                c.WeightedScore,
-                c.Reason,
-                c.Detail))
-            .ToArray();
+        var components = score.Components.Select(ScoreComponentContract.From).ToArray();
 
         return new ScoreCandidateFitResponse(candidateId, jobId, score.Total, components);
     }

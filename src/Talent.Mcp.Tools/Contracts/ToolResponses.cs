@@ -74,7 +74,12 @@ public sealed record ExtractSkillsResponse(
 /// <param name="Name">Component id, stable across versions.</param>
 /// <param name="RawScore">The component's own 0–1 score before weighting.</param>
 /// <param name="Weight">Its share of the total.</param>
-/// <param name="WeightedScore">The product, so a caller need not multiply to explain the total.</param>
+/// <param name="WeightedScore">
+/// The product, so a caller need not multiply to explain the total. Rounded to
+/// <see cref="WeightedScoreDecimals"/> places on the wire: the exact product is a floating-point value
+/// such as <c>0.44999999999999996</c> for 0.75 × 0.6, which is noise to the person reading the
+/// breakdown (#14). The total is computed from the exact products before this rounding.
+/// </param>
 /// <param name="Reason">Machine-readable reason code.</param>
 /// <param name="Detail">Human-readable explanation.</param>
 public sealed record ScoreComponentContract(
@@ -83,7 +88,28 @@ public sealed record ScoreComponentContract(
     double Weight,
     double WeightedScore,
     ScoreReason Reason,
-    string Detail);
+    string Detail)
+{
+    /// <summary>Decimal places <see cref="WeightedScore"/> carries on the wire.</summary>
+    public const int WeightedScoreDecimals = 4;
+
+    /// <summary>Projects a domain score component onto the wire shape.</summary>
+    /// <param name="component">The domain component.</param>
+    /// <returns>The contract, with the weighted score rounded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="component"/> was <see langword="null"/>.</exception>
+    public static ScoreComponentContract From(ScoreComponent component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+
+        return new ScoreComponentContract(
+            component.Name,
+            component.RawScore,
+            component.Weight,
+            Math.Round(component.WeightedScore, WeightedScoreDecimals, MidpointRounding.AwayFromZero),
+            component.Reason,
+            component.Detail);
+    }
+}
 
 /// <summary>An explainable candidate-fit score.</summary>
 /// <param name="CandidateId">The candidate scored.</param>
@@ -109,15 +135,7 @@ public sealed record ScoreCandidateFitResponse(
     {
         ArgumentNullException.ThrowIfNull(score);
 
-        var components = score.Components
-            .Select(static c => new ScoreComponentContract(
-                c.Name,
-                c.RawScore,
-                c.Weight,
-                c.WeightedScore,
-                c.Reason,
-                c.Detail))
-            .ToArray();
+        var components = score.Components.Select(ScoreComponentContract.From).ToArray();
 
         return new ScoreCandidateFitResponse(candidateId, jobId, score.Total, components);
     }

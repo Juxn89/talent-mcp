@@ -20,9 +20,7 @@ public sealed record ShortlistScoreEntryContract(
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        var components = entry.Score.Components
-            .Select(static c => new ScoreComponentContract(c.Name, c.RawScore, c.Weight, c.WeightedScore, c.Reason, c.Detail))
-            .ToArray();
+        var components = entry.Score.Components.Select(ScoreComponentContract.From).ToArray();
 
         return new ShortlistScoreEntryContract(entry.CandidateId, entry.Score.Total, components);
     }

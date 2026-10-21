@@ -1,17 +1,143 @@
-# Talent.Mcp
+<div align="center">
 
-[![CI](https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml)
-[![NuGet — Talent.Mcp.Toolkit](https://img.shields.io/nuget/v/Talent.Mcp.Toolkit?label=Talent.Mcp.Toolkit)](https://www.nuget.org/packages/Talent.Mcp.Toolkit)
-[![NuGet — talent-mcp](https://img.shields.io/nuget/v/Talent.Mcp.Server?label=talent-mcp%20tool)](https://www.nuget.org/packages/Talent.Mcp.Server)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/hero-dark.svg">
+  <img src="docs/readme/hero-light.svg" alt="talent-mcp — gives AI agents typed, secured tools: a permission per tool, confirmation before anything destructive, and no model inside, so results are deterministic and cost nothing." width="100%">
+</picture>
 
-An MCP server in C# for the recruitment domain, built against the **2026-07-28 Model Context
-Protocol revision** — the one that removed sessions. Six typed tools over stateless Streamable HTTP
-with OAuth 2.1 + PKCE, and the same six over stdio as a `dotnet tool`.
+<br><br>
 
-**No tool calls an LLM.** Scoring and skill normalization are deterministic pure functions, so the
-server runs with no API keys, at zero cost, and its results are reproducible enough to be a test
-oracle.
+<a href="https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml"><img src="https://github.com/Juxn89/talent-mcp/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+<img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10">
+<img src="https://img.shields.io/badge/MCP-2026--07--28-2563eb?style=flat-square" alt="MCP 2026-07-28">
+<a href="https://www.nuget.org/packages/Talent.Mcp.Toolkit"><img src="https://img.shields.io/nuget/v/Talent.Mcp.Toolkit?style=flat-square&label=Talent.Mcp.Toolkit&logo=nuget" alt="Talent.Mcp.Toolkit on NuGet"></a>
+<a href="https://www.nuget.org/packages/Talent.Mcp.Server"><img src="https://img.shields.io/nuget/v/Talent.Mcp.Server?style=flat-square&label=talent-mcp%20tool&logo=nuget" alt="talent-mcp dotnet tool on NuGet"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-f59e0b?style=flat-square" alt="Apache 2.0 License"></a>
+
+</div>
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/metrics-dark.svg">
+  <img src="docs/readme/metrics-light.svg" alt="6 typed tools, each behind its own OAuth scope · 323 ms cold start of the dotnet tool, measured in CI · about 1 s for the Tasks store to recover a Postgres restart, over 3 CI runs · 0 LLM calls: no API key, no model cost" width="100%">
+</picture>
+
+<br><br>
+
+AI agents can now call tools: search your data, create records, take actions. Connecting one to a real
+system raises the questions that matter — what it may read, what it may change, who confirms before
+something is deleted, and how you audit what it did. **talent-mcp** answers them for a domain where
+mistakes are costly, recruiting: an MCP server in C# with six typed tools, a separate OAuth scope for
+reading, writing and destroying, and a confirmation round trip before any rejection. It is built
+against the **2026-07-28 Model Context Protocol revision** — the one that removed sessions — over
+stateless Streamable HTTP, and ships the same six tools over stdio as a `dotnet tool`.
+
+> [!NOTE]
+> **No tool calls an LLM.** Scoring and skill normalization are deterministic pure functions, so the
+> server runs with no API keys, at zero cost, and its results are reproducible enough to be a test
+> oracle. The screenshots in [`docs/demo`](docs/demo) are the running server seen through
+> [MCP Inspector](https://github.com/modelcontextprotocol/inspector) 2.9.0; every number on this page
+> comes from CI or the [changelog](CHANGELOG.md).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/showcase-dark.png">
+    <img src="docs/readme/showcase-light.png" alt="MCP Inspector showing the server's confirmation request before rejecting a candidate: the reason on record and a warning that it cannot be undone" width="100%">
+  </picture>
+</p>
+<p align="center"><sub><code>reject_candidate</code> does not reject on the first call: it answers <code>input_required</code>, and only a confirmed retry writes. Seen in MCP Inspector against the seed data · <a href="docs/demo">all screenshots</a></sub></p>
+
+<p align="center"><img src="docs/readme/divider.svg" width="100%" alt=""></p>
+
+## How it works
+
+```mermaid
+flowchart LR
+    A([AI agent]) --> T["OAuth 2.1 token<br/>scope per tool"]
+    T --> S{{"Scope allows<br/>this tool?"}}
+    S -- no --> D["Denied<br/>before the tool runs"]
+    S -- yes --> R["Typed tool<br/>pure scoring · signed handles"]
+    R --> X{{"Destructive?"}}
+    X -- no --> O(["Result<br/>+ next-page handle"])
+    X -- yes --> C["input_required<br/>confirm and reason"]
+    C --> W(["Confirmed retry<br/>writes to Postgres"])
+
+    classDef io fill:#1e40af,stroke:#38bdf8,color:#ffffff
+    classDef work fill:#1e293b,stroke:#64748b,color:#f8fafc
+    classDef gate fill:#b45309,stroke:#fbbf24,color:#ffffff
+    class A,O,W io
+    class T,R,C work
+    class S,X gate
+    class D gate
+```
+
+1. The agent gets a token from Keycloak whose scopes name what it may do; each tool checks its own
+   scope, and a token without it is denied before the tool runs.
+2. Reads are pure functions over Postgres data: the same question always returns the same answer,
+   with the breakdown behind every score.
+3. State between calls is a signed, time-limited handle passed back as an ordinary argument, so any
+   replica can answer any request.
+4. A destructive tool answers with a question first. Only the client's confirmed retry performs the
+   write, and the reason travels inside the signed request state, so it cannot change in between.
+
+## What's inside
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="docs/readme/icon-confirm.svg" width="44" alt=""><br>
+      <b>Confirmation before destruction</b><br>
+      <sub><code>reject_candidate</code> answers <code>input_required</code> (MRTR) and only a confirmed retry writes, with a safe path when the client cannot ask.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/readme/icon-scopes.svg" width="44" alt=""><br>
+      <b>A scope per tool</b><br>
+      <sub>Read, write and destructive scopes are not interchangeable. The E2E suite proves a token without the scope is denied.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/readme/icon-handle.svg" width="44" alt=""><br>
+      <b>Signed handles, no sessions</b><br>
+      <sub>Pagination and confirmation state travel as signed, TTL-bounded handles, so the HTTP host scales out with no sticky sessions.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <img src="docs/readme/icon-explain.svg" width="44" alt=""><br>
+      <b>Explainable scores</b><br>
+      <sub>Candidate fit is a pure function with a per-component breakdown: skills, seniority, location, each with its weight and reason.</sub>
+    </td>
+    <td valign="top">
+      <img src="docs/readme/icon-tasks.svg" width="44" alt=""><br>
+      <b>Tasks that survive a restart</b><br>
+      <sub><code>bulk_score_shortlist</code> runs on the Tasks extension, stored in Postgres; the store recovers a database restart in about a second.</sub>
+    </td>
+    <td valign="top">
+      <img src="docs/readme/icon-hosts.svg" width="44" alt=""><br>
+      <b>One tool surface, two hosts</b><br>
+      <sub>Stateless Streamable HTTP as a container image, and stdio as a <code>dotnet tool</code> for Claude Code and Claude Desktop.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <img src="docs/readme/icon-trace.svg" width="44" alt=""><br>
+      <b>Traced and measured</b><br>
+      <sub>OpenTelemetry to Jaeger, Prometheus and Loki, with a provisioned Grafana dashboard for latency and errors per tool.</sub>
+    </td>
+    <td valign="top">
+      <img src="docs/readme/icon-tests.svg" width="44" alt=""><br>
+      <b>Five test levels gate the merge</b><br>
+      <sub>Architecture rules, domain, tools in memory, protocol conformance for 2026-07-28, and end to end through OAuth and Postgres.</sub>
+    </td>
+    <td valign="top">
+      <img src="docs/readme/icon-package.svg" width="44" alt=""><br>
+      <b>Published</b><br>
+      <sub>On NuGet as a reusable protocol toolkit and as the <code>talent-mcp</code> tool, plus an image on GHCR. The release tag sets every version.</sub>
+    </td>
+  </tr>
+</table>
+
+## Run it
 
 ```bash
 git clone https://github.com/Juxn89/talent-mcp.git && cd talent-mcp
@@ -104,7 +230,7 @@ curl -s -X POST http://localhost:5000/mcp \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
         "name":"search_jobs",
-        "arguments":{"query":"dotnet","pageSize":2},
+        "arguments":{"query":"engineer","pageSize":2},
         "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",
                  "io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
@@ -112,7 +238,7 @@ curl -s -X POST http://localhost:5000/mcp \
 The result carries `nextPageHandle`, which you pass straight back as an argument to get page two:
 
 ```jsonc
-{ "jobs": [ /* … */ ], "totalMatches": 7, "hasMore": true,
+{ "jobs": [ /* … */ ], "totalMatches": /* … */, "hasMore": true,
   "nextPageHandle": "AAAAAGqQKRi4yPyKLkvv9…" }
 ```
 
@@ -137,8 +263,9 @@ If the client cannot elicit, the tool takes a degraded path instead of failing. 
 mechanism exists, the second whether anyone is there to answer.
 
 **4. Watch it in Jaeger.** Client context arrives in `_meta` as `traceparent`/`tracestate`/`baggage`,
-so one trace spans client → server → Postgres. Open <http://localhost:16686> and pick
-`talent-mcp-server`.
+so the client's call and the tool it ran share one trace. Open <http://localhost:16686> and pick
+`talent-mcp-http`. Database calls are not instrumented yet, so traces stop at the tool span
+([#13](https://github.com/Juxn89/talent-mcp/issues/13)); Grafana has latency and errors per tool.
 
 ---
 
@@ -323,6 +450,21 @@ in [`AGENTS.md`](./AGENTS.md). Release history is in [`CHANGELOG.md`](./CHANGELO
 
 ---
 
-## License
+## How it was built
 
-[Apache 2.0](./LICENSE)
+Developed with Claude Code under explicit rules rather than ad-hoc prompting: [`AGENTS.md`](AGENTS.md)
+holds the binding guidelines and [`CLAUDE.md`](CLAUDE.md) points to it. Every decision has an ADR in
+[`docs/adr/`](docs/adr/), and every external fact the code relies on has a dated record in
+[`docs/verification/`](docs/verification/). The README artwork is generated by
+[`scripts/readme-assets.mjs`](scripts/readme-assets.mjs) (`node scripts/readme-assets.mjs`, no
+dependencies).
+
+<p align="center"><img src="docs/readme/divider.svg" width="100%" alt=""></p>
+
+<div align="center">
+
+**Juan Gómez** · [juangomezb.com](https://www.juangomezb.com) · [GitHub](https://github.com/Juxn89) · [LinkedIn](https://www.linkedin.com/in/jcgomez89/)
+
+<sub>Released under the <a href="LICENSE">Apache 2.0 License</a>.</sub>
+
+</div>

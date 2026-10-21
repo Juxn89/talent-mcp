@@ -19,7 +19,14 @@ Entries below cover both unless a package is named.
 > resulting `409 Conflict` as success. `1.0.1` is the only prior version on nuget.org. Fixed in
 > 1.0.6, where the tag sets the version.
 
-## [Unreleased]
+## [1.2.0] — 2026-10-21
+
+### Added
+
+- **`ExternalActivitySources`** (`Talent.Mcp.Toolkit`): the `ActivitySource` names of libraries that
+  trace themselves, registered by `AddTalentTelemetry` next to `TalentActivitySource`. It holds
+  `Npgsql` today. Minor rather than patch for this reason: the library gains a public type, and
+  removes none.
 
 ### Fixed
 
@@ -220,7 +227,8 @@ publish all three artifacts.
   silently empties a reflection-discovered tool set, and the failure is a `-32601` with no crash and
   no error log ([ADR-0002](docs/adr/0002-native-aot-and-explicit-tool-registration.md)).
 
-[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Juxn89/talent-mcp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Juxn89/talent-mcp/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Juxn89/talent-mcp/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/Juxn89/talent-mcp/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Juxn89/talent-mcp/compare/v1.0.4...v1.0.5

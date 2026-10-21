@@ -7,11 +7,6 @@ using Talent.Domain.Scoring;
 /// <summary>One page of job postings.</summary>
 /// <param name="Jobs">The postings on this page.</param>
 /// <param name="TotalMatches">Total matches across all pages.</param>
-/// <param name="NextPageHandle">
-/// Opaque handle to pass back as <c>pageHandle</c> for the next page, or <see langword="null"/> on the
-/// last page. Signed and short-lived: it is not an offset a caller can edit, and it carries the search
-/// criteria as well as the position, so page 2 cannot be an offset into a different result set.
-/// </param>
 /// <param name="HasMore">
 /// Whether a next page exists.
 /// <para>
@@ -21,11 +16,22 @@ using Talent.Domain.Scoring;
 /// is a model guessing. This field says it outright.
 /// </para>
 /// </param>
+/// <param name="NextPageHandle">
+/// Opaque handle to pass back as <c>pageHandle</c> for the next page, or <see langword="null"/> on the
+/// last page. Signed and short-lived: it is not an offset a caller can edit, and it carries the search
+/// criteria as well as the position, so page 2 cannot be an offset into a different result set.
+/// <para>
+/// Last and defaulted on purpose. The schema exporter marks a constructor parameter without a default
+/// as required, and a null handle is omitted from the payload, so a required <c>nextPageHandle</c> made
+/// every last page invalid against the declared <c>outputSchema</c> (#12). With the default it is
+/// optional, which is what the payload has always been.
+/// </para>
+/// </param>
 public sealed record SearchJobsResponse(
     IReadOnlyList<JobSummaryContract> Jobs,
     int TotalMatches,
-    string? NextPageHandle,
-    bool HasMore);
+    bool HasMore,
+    string? NextPageHandle = null);
 
 /// <summary>One job posting, plus which region served it.</summary>
 /// <param name="Job">The posting.</param>

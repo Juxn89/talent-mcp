@@ -122,7 +122,7 @@ flowchart LR
     <td valign="top">
       <img src="docs/readme/icon-trace.svg" width="44" alt=""><br>
       <b>Traced and measured</b><br>
-      <sub>OpenTelemetry to Jaeger, Prometheus and Loki, with a provisioned Grafana dashboard for latency and errors per tool.</sub>
+      <sub>One trace from the client's call through the tool to every Postgres command, plus a provisioned Grafana dashboard for latency and errors per tool.</sub>
     </td>
     <td valign="top">
       <img src="docs/readme/icon-tests.svg" width="44" alt=""><br>
@@ -263,9 +263,8 @@ If the client cannot elicit, the tool takes a degraded path instead of failing. 
 mechanism exists, the second whether anyone is there to answer.
 
 **4. Watch it in Jaeger.** Client context arrives in `_meta` as `traceparent`/`tracestate`/`baggage`,
-so the client's call and the tool it ran share one trace. Open <http://localhost:16686> and pick
-`talent-mcp-http`. Database calls are not instrumented yet, so traces stop at the tool span
-([#13](https://github.com/Juxn89/talent-mcp/issues/13)); Grafana has latency and errors per tool.
+so one trace spans client → tool → Postgres: Npgsql's command spans hang off the tool span. Open
+<http://localhost:16686> and pick `talent-mcp-http`; Grafana has latency and errors per tool.
 
 ---
 
